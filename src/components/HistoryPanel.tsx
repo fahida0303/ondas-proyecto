@@ -1,5 +1,6 @@
 import type { HistoryRecord } from '../hooks/useResonanceAnalyzer';
 import { Download, Trash2 } from 'lucide-react';
+import { exportToPDF } from '../utils/pdfExport';
 
 interface HistoryPanelProps {
   history: HistoryRecord[];
@@ -7,33 +8,13 @@ interface HistoryPanelProps {
 }
 
 export function HistoryPanel({ history, onClear }: HistoryPanelProps) {
-  
-  const exportToCSV = () => {
-    if (history.length === 0) return;
-    
-    let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "Fecha,Hora,Modo,Frecuencia Diapason (Hz),Frecuencia Detectada (Hz),Amplitud,Temperatura (C),Diametro Tubo (cm),Longitud (cm),Velocidad Teorica (m/s),Velocidad Experimental (m/s),Incertidumbre dv (m/s),Error (%)\n";
-
-    history.forEach(row => {
-      const date = new Date(row.timestamp);
-      csvContent += `${date.toLocaleDateString()},${date.toLocaleTimeString()},${row.mode},${row.frequency},${row.detectedFrequency},${row.maxAmplitude},${row.temperature},${row.diameter},${row.length},${row.theoreticalSpeed},${row.experimentalSpeed},${row.speedUncertainty},${row.errorPercentage}\n`;
-    });
-    
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `laboratorio_ondas_${new Date().getTime()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   return (
     <div className="glass-panel" style={{ height: '100%' }}>
       <div className="panel-title">
         <span>Resultados Físicos</span>
         <div className="history-header-actions">
-          <button className="btn-icon" onClick={exportToCSV} disabled={history.length === 0} title="Exportar a CSV">
+          <button className="btn-icon" onClick={() => exportToPDF(history)} disabled={history.length === 0} title="Descargar informe PDF">
             <Download size={18} />
           </button>
           <button className="btn-icon danger" onClick={onClear} disabled={history.length === 0} title="Borrar">
