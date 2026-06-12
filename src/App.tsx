@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { TutorialOverlay } from './components/TutorialOverlay';
 import { SettingsPanel } from './components/SettingsPanel';
 import { StatusDisplay } from './components/StatusDisplay';
@@ -18,11 +18,17 @@ function App() {
   const [temperature, setTemperature] = useState<number>(20);
   const [diameter, setDiameter] = useState<number>(3);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [simulatedWater, setSimulatedWater] = useState(0.5);
+  const [simulation, setSimulation] = useState({ waterFraction: 0.84, airColumnCm: 8, tubeLengthCm: 50 });
   const [showCalculator, setShowCalculator] = useState(false);
   const [showTutorial, setShowTutorial] = useState(true);
 
   const closeTutorial = () => setShowTutorial(false);
+
+  const handleSimulatedWater = useCallback(
+    (waterFraction: number, airColumnCm: number, tubeLengthCm: number) =>
+      setSimulation({ waterFraction, airColumnCm, tubeLengthCm }),
+    []
+  );
 
   const [history, setHistory] = useState<HistoryRecord[]>([]);
 
@@ -158,14 +164,19 @@ function App() {
           <ResonanceVisualizer3D
             mode={mode}
             resonanceLevel={resonanceLevel}
-            waterFraction={simulatedWater}
+            waterFraction={simulation.waterFraction}
             active={isCapturing}
+            targetFrequency={targetFrequency}
+            detectedFrequency={detectedFrequency}
+            temperature={temperature}
+            airColumnCm={simulation.airColumnCm}
+            tubeLengthCm={simulation.tubeLengthCm}
           />
           <ResonancePredictor
             frequency={targetFrequency}
             temperature={temperature}
             diameter={diameter}
-            onSimulatedWater={setSimulatedWater}
+            onSimulatedWater={handleSimulatedWater}
           />
         </section>
 

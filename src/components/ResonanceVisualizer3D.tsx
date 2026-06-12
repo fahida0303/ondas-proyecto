@@ -1,13 +1,33 @@
-import { useRef, useMemo } from 'react';
+import { useRef, useMemo, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
+import type { ThreeEvent } from '@react-three/fiber';
 import { OrbitControls, Environment, Lightformer, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
+import { theoreticalSpeedOfSound } from '../utils/physics';
 
 interface VisualizerProps {
   mode: number;
   resonanceLevel: number;
   waterFraction: number;
   active?: boolean;
+}
+
+interface Visualizer3DProps extends VisualizerProps {
+  targetFrequency: number;
+  detectedFrequency: number;
+  temperature: number;
+  airColumnCm: number;
+  tubeLengthCm: number;
+}
+
+type HoverRegion = 'air' | 'water' | 'fork';
+
+interface HoverState {
+  region: HoverRegion;
+  // Posición normalizada dentro de la columna de aire (0 = agua, 1 = boca).
+  u: number;
+  x: number;
+  y: number;
 }
 
 const TUBE_H = 10;
@@ -288,13 +308,192 @@ function GlassTube() {
   );
 }
 
-export function ResonanceVisualizer3D({ mode, resonanceLevel, waterFraction, active }: VisualizerProps) {
+function NodeMarkers({ mode, waterFraction, show }: { mode: number; waterFraction: number; show: boolean }) {
+  const markers = useMemo(() => {
+    const out: { u: number; type: 'node' | 'antinode' }[] = [];
+    for (let k = 0; (2 * k) / mode <= 1.001; k++) {
+      out.push({ u: Math.min(1, (2 * k) / mode), type: 'node' });
+    }
+    for (let k = 0; (2 * k + 1) / mode <= 1.001; k++) {
+      out.push({ u: Math.min(1, (2 * k + 1) / mode), type: 'antinode' });
+    }
+    return out;
+  }, [mode]);
+
+  if (!show) return null;
+
+  const waterY = TUBE_BOTTOM + waterFraction * TUBE_H;
+  const airLen = Math.max(0.001, TUBE_TOP - waterY);
+
   return (
-    <div className="glass-panel visualizer-container" style={{ padding: 0, overflow: 'hidden' }}>
+    <group>
+      {markers.map((m, i) => (
+        <mesh key={i} position={[0, waterY + m.u * airLen, 0]} rotation={[Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[TUBE_R * 1.12, 0.035, 10, 48]} />
+          <meshBasicMaterial
+            color={m.type === 'node' ? '#00e5ff' : '#00ff88'}
+            transparent
+            opacity={0.75}
+            toneMapped={false}
+          />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function Hotspots({
+  waterFraction,
+  forkVisible,
+  onHover,
+}: {
+  waterFraction: number;
+  forkVisible: boolean;
+  onHover: (h: HoverState | null) => void;
+}) {
+  const waterY = TUBE_BOTTOM + waterFraction * TUBE_H;
+  const airLen = Math.max(0.001, TUBE_TOP - waterY);
+  const waterLen = Math.max(0.001, waterY - TUBE_BOTTOM);
+
+  const handleMove = (region: HoverRegion) => (e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation();
+    const u = region === 'air' ? Math.max(0, Math.min(1, (e.point.y - waterY) / airLen)) : 0;
+    const canvas = e.nativeEvent.target as HTMLElement;
+    const x = Math.min(e.nativeEvent.offsetX + 16, Math.max(0, canvas.clientWidth - 240));
+    const y = Math.min(e.nativeEvent.offsetY + 12, Math.max(0, canvas.clientHeight - 190));
+    onHover({ region, u, x, y });
+  };
+
+  const handleOver = (e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation();
+    document.body.style.cursor = 'crosshair';
+  };
+
+  const handleOut = () => {
+    document.body.style.cursor = 'default';
+    onHover(null);
+  };
+
+  const hidden = <meshBasicMaterial transparent opacity={0} depthWrite={false} />;
+
+  return (
+    <group>
+      <mesh
+        position={[0, waterY + airLen / 2, 0]}
+        onPointerMove={handleMove('air')}
+        onPointerOver={handleOver}
+        onPointerOut={handleOut}
+      >
+        <cylinderGeometry args={[TUBE_R * 1.06, TUBE_R * 1.06, airLen, 24]} />
+        {hidden}
+      </mesh>
+      <mesh
+        position={[0, TUBE_BOTTOM + waterLen / 2, 0]}
+        onPointerMove={handleMove('water')}
+        onPointerOver={handleOver}
+        onPointerOut={handleOut}
+      >
+        <cylinderGeometry args={[TUBE_R * 1.06, TUBE_R * 1.06, waterLen, 24]} />
+        {hidden}
+      </mesh>
+      {forkVisible && (
+        <mesh
+          position={[0, TUBE_TOP + 1.6, 0]}
+          onPointerMove={handleMove('fork')}
+          onPointerOver={handleOver}
+          onPointerOut={handleOut}
+        >
+          <boxGeometry args={[1.6, 4.2, 1.6]} />
+          {hidden}
+        </mesh>
+      )}
+    </group>
+  );
+}
+
+export function ResonanceVisualizer3D({
+  mode,
+  resonanceLevel,
+  waterFraction,
+  active,
+  targetFrequency,
+  detectedFrequency,
+  temperature,
+  airColumnCm,
+  tubeLengthCm,
+}: Visualizer3DProps) {
+  const [hover, setHover] = useState<HoverState | null>(null);
+
+  const speed = theoreticalSpeedOfSound(temperature);
+  const lambdaCm = (speed / targetFrequency) * 100;
+  const waterLevelCm = Math.max(0, tubeLengthCm - airColumnCm);
+  const forkVisible = Boolean(active) && resonanceLevel > 50;
+
+  let tooltip: { title: string; rows: [string, string][]; note?: string } | null = null;
+  if (hover) {
+    if (hover.region === 'air') {
+      const envelope = Math.abs(Math.sin(((mode * Math.PI) / 2) * hover.u));
+      const zone =
+        envelope < 0.2 ? 'cerca de un nodo' : envelope > 0.8 ? 'cerca de un antinodo' : 'zona intermedia';
+      tooltip = {
+        title: 'Columna de aire',
+        rows: [
+          ['Altura sobre el agua', `${(hover.u * airColumnCm).toFixed(1)} cm`],
+          ['Amplitud local', `${Math.round(envelope * 100)} % (${zone})`],
+          ['Columna de aire', `${airColumnCm.toFixed(1)} cm`],
+          [`λ a ${targetFrequency} Hz`, `${lambdaCm.toFixed(1)} cm`],
+          [`v teórica (${temperature} °C)`, `${speed.toFixed(1)} m/s`],
+          ...(active ? [['Resonancia ahora', `${Math.round(resonanceLevel)} %`] as [string, string]] : []),
+        ],
+        note: 'Anillos: cian = nodo · verde = antinodo',
+      };
+    } else if (hover.region === 'water') {
+      tooltip = {
+        title: 'Agua',
+        rows: [
+          ['Nivel de agua', `${waterLevelCm.toFixed(1)} cm (${Math.round(waterFraction * 100)} % del tubo)`],
+          ['Columna de aire', `${airColumnCm.toFixed(1)} cm`],
+          ['Largo del tubo', `${tubeLengthCm.toFixed(0)} cm`],
+        ],
+        note: 'La superficie del agua actúa como extremo cerrado: nodo de desplazamiento.',
+      };
+    } else {
+      tooltip = {
+        title: 'Diapasón',
+        rows: [
+          ['Frecuencia objetivo', `${targetFrequency} Hz`],
+          ['Frecuencia detectada', detectedFrequency > 0 ? `${detectedFrequency.toFixed(1)} Hz` : '—'],
+          [
+            'Desviación',
+            detectedFrequency > 0 ? `${(detectedFrequency - targetFrequency).toFixed(1)} Hz` : '—',
+          ],
+          ['Nivel de resonancia', `${Math.round(resonanceLevel)} %`],
+        ],
+        note: 'El diapasón excita la columna de aire a su frecuencia natural.',
+      };
+    }
+  }
+
+  return (
+    <div className="glass-panel visualizer-container" style={{ padding: 0, overflow: 'hidden', position: 'relative' }}>
       <div className="visualizer-header" style={{ pointerEvents: 'none' }}>
         <h2>Tubo Resonante 3D</h2>
         <p>Onda estacionaria en la columna de aire · Modo {mode}</p>
+        <p style={{ fontSize: '0.75rem', opacity: 0.75 }}>Pasa el cursor por el tubo para ver los datos del experimento</p>
       </div>
+
+      {hover && tooltip && (
+        <div className="viz-tooltip" style={{ left: hover.x, top: hover.y }}>
+          <div className="viz-tooltip-title">{tooltip.title}</div>
+          {tooltip.rows.map(([label, value]) => (
+            <div className="viz-tooltip-row" key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </div>
+          ))}
+          {tooltip.note && <div className="viz-tooltip-note">{tooltip.note}</div>}
+        </div>
+      )}
 
       <Canvas camera={{ position: [0, 1.5, 15], fov: 42 }} dpr={[1, 2]} shadows>
         <color attach="background" args={['#20242c']} />
@@ -319,6 +518,8 @@ export function ResonanceVisualizer3D({ mode, resonanceLevel, waterFraction, act
         <ParticlesWave mode={mode} resonanceLevel={resonanceLevel} waterFraction={waterFraction} active={active} />
         <TuningFork resonanceLevel={active ? resonanceLevel : 0} />
         <ResonanceGlow resonanceLevel={active ? resonanceLevel : 0} waterFraction={waterFraction} />
+        <NodeMarkers mode={mode} waterFraction={waterFraction} show={hover?.region === 'air'} />
+        <Hotspots waterFraction={waterFraction} forkVisible={forkVisible} onHover={setHover} />
 
         <ContactShadows
           position={[0, TUBE_BOTTOM - 0.46, 0]}

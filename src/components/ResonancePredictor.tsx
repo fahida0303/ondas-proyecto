@@ -11,7 +11,7 @@ interface ResonancePredictorProps {
   frequency: number;
   temperature: number;
   diameter: number;
-  onSimulatedWater: (fraction: number) => void;
+  onSimulatedWater: (fraction: number, airColumnCm: number, tubeLengthCm: number) => void;
 }
 
 export function ResonancePredictor({
@@ -37,7 +37,7 @@ export function ResonancePredictor({
 
   useEffect(() => {
     const fraction = Math.max(0, Math.min(1, 1 - airColumnCm / tubeLengthCm));
-    onSimulatedWater(fraction);
+    onSimulatedWater(fraction, airColumnCm, tubeLengthCm);
   }, [airColumnCm, tubeLengthCm, onSimulatedWater]);
 
   const W = 300;

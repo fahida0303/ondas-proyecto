@@ -1094,3 +1094,48 @@ body {
   50% { transform: translateY(0); }
 }
 .animate-bounce { animation: bounce 1s infinite; }
+
+/* Tooltip de datos del experimento en el visualizador 3D */
+.viz-tooltip {
+  position: absolute;
+  z-index: 20;
+  pointer-events: none;
+  min-width: 220px;
+  max-width: 260px;
+  padding: 0.6rem 0.8rem;
+  background: rgba(10, 14, 22, 0.92);
+  border: 1px solid var(--border-active);
+  border-radius: var(--radius-sm);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), 0 0 12px rgba(0, 229, 255, 0.12);
+  animation: tutFade 0.15s ease-out;
+}
+
+.viz-tooltip-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--accent-color);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.4rem;
+}
+
+.viz-tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  font-size: 0.78rem;
+  padding: 0.12rem 0;
+}
+.viz-tooltip-row span { color: var(--text-secondary); }
+.viz-tooltip-row strong { color: var(--text-primary); white-space: nowrap; }
+
+.viz-tooltip-note {
+  margin-top: 0.45rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--border-color);
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
