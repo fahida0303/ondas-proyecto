@@ -7,14 +7,15 @@ export interface HistoryRecord {
   timestamp: number;
   mode: number;
   frequency: number;
-  detectedFrequency: number; // frecuencia dominante medida por la FFT (Hz)
+  detectedFrequency: number;
+  usedFrequency: number;
   maxAmplitude: number;
   temperature: number;
   diameter: number;
   length: number;
   theoreticalSpeed: number;
   experimentalSpeed: number;
-  speedUncertainty: number; // Δv (m/s)
+  speedUncertainty: number;
   errorPercentage: number;
 }
 
@@ -28,9 +29,9 @@ export function useResonanceAnalyzer({ targetFrequency, mode }: UseResonanceAnal
   const [status, setStatus] = useState<AnalyzerStatus>('idle');
   const [currentAmplitude, setCurrentAmplitude] = useState(0);
   const [maxAmplitude, setMaxAmplitude] = useState(0);
-  const [detectedFrequency, setDetectedFrequency] = useState(0); // Hz dominante en la banda
-  const [dominantFrequency, setDominantFrequency] = useState(0); // Hz del tono dominante en TODO el espectro (si está fuera de banda)
-  const [resonanceLevel, setResonanceLevel] = useState(0); // 0 to 100
+  const [detectedFrequency, setDetectedFrequency] = useState(0);
+  const [dominantFrequency, setDominantFrequency] = useState(0);
+  const [resonanceLevel, setResonanceLevel] = useState(0);
   const [maxFound, setMaxFound] = useState(false);
   const [maxAmplitudeObserved, setMaxAmplitudeObserved] = useState(0);
   
@@ -85,8 +86,8 @@ export function useResonanceAnalyzer({ targetFrequency, mode }: UseResonanceAnal
       const analyser = audioCtx.createAnalyser();
       const source = audioCtx.createMediaStreamSource(stream);
       
-      analyser.fftSize = 16384; // mejor resolución en frecuencia (~2.9 Hz/bin a 48 kHz)
-      analyser.smoothingTimeConstant = 0; // controlamos el suavizado nosotros (evita doble filtrado)
+      analyser.fftSize = 16384;
+      analyser.smoothingTimeConstant = 0;
       source.connect(analyser);
 
       audioContextRef.current = audioCtx;
@@ -159,8 +160,6 @@ export function useResonanceAnalyzer({ targetFrequency, mode }: UseResonanceAnal
       }
     }
 
-    // Frecuencia dominante en TODO el espectro audible (para distinguir si el
-    // tono real está dentro o fuera de la banda objetivo).
     const minAudibleBin = Math.max(1, Math.floor(80 / hzPerBin));
     let globalPeak = 0;
     let globalBin = minAudibleBin;
@@ -171,7 +170,6 @@ export function useResonanceAnalyzer({ targetFrequency, mode }: UseResonanceAnal
       }
     }
 
-    // Interpolación parabólica de 3 bins → precisión sub-bin (< 1 Hz).
     const refineFreq = (bin: number) => {
       const a = dataArray[bin - 1];
       const b = dataArray[bin];
@@ -184,15 +182,12 @@ export function useResonanceAnalyzer({ targetFrequency, mode }: UseResonanceAnal
 
     const thr = stateRef.current.noiseThreshold;
     const inBandValid = rawAmplitude >= thr && peakBin > 0 && peakBin < bufferLength - 1;
-    // El pico de la banda es "real" solo si domina el espectro (un tono fuera
-    // de banda, como un 440 Hz cuando buscas 1024 Hz, tendría globalPeak >> rawAmplitude).
     const inBandIsDominant = rawAmplitude >= 0.5 * globalPeak;
 
     if (inBandValid && inBandIsDominant) {
       setDetectedFrequency(refineFreq(peakBin));
       setDominantFrequency(0);
     } else if (globalPeak >= Math.max(thr, 90) && globalBin > 0 && globalBin < bufferLength - 1) {
-      // Hay un tono fuerte, pero está FUERA de la banda objetivo.
       setDetectedFrequency(0);
       setDominantFrequency(refineFreq(globalBin));
     } else {
@@ -204,7 +199,6 @@ export function useResonanceAnalyzer({ targetFrequency, mode }: UseResonanceAnal
 
     const st = stateRef.current;
 
-    // Calibration Phase
     if (st.status === 'calibrating') {
       const now = performance.now();
       st.calibrationSamples.push(rawAmplitude);
@@ -260,8 +254,6 @@ export function useResonanceAnalyzer({ targetFrequency, mode }: UseResonanceAnal
           if (st.dropCounter > DROP_FRAMES_REQ && !st.maxFound) {
             st.maxFound = true;
             setMaxFound(true);
-            // In Phase 3, we don't automatically save to history here.
-            // App.tsx will detect maxFound and show the Calculation Modal.
           }
         } else {
           st.dropCounter = Math.max(0, st.dropCounter - 1);
@@ -295,7 +287,7 @@ export function useResonanceAnalyzer({ targetFrequency, mode }: UseResonanceAnal
     dominantFrequency,
     resonanceLevel,
     maxFound,
-    setMaxFound, // Exposed to allow resetting the modal
+    setMaxFound,
     maxAmplitudeObserved,
     isClipping,
     micError,

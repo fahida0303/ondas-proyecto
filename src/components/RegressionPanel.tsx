@@ -15,10 +15,6 @@ interface Group {
   result: RegressionResult;
 }
 
-/**
- * Mini-gráfico L (cm) vs modo (2n-1) con la recta de mínimos cuadrados.
- * La pendiente es λ/4 y la ordenada al origen es -e (corrección de extremo).
- */
 function RegressionPlot({ group }: { group: Group }) {
   const W = 240;
   const H = 130;
@@ -39,18 +35,15 @@ function RegressionPlot({ group }: { group: Group }) {
   const sx = (x: number) => padL + ((x - minX) / (maxX - minX)) * (W - padL - padR);
   const sy = (y: number) => H - padB - ((y - minY) / (maxY - minY)) * (H - padT - padB);
 
-  // Recta: L = (λ/4)·modo - e  →  pendiente = λ/4 (m) = wavelength/4, en cm ·100.
   const slopeCm = (group.result.wavelength / 4) * 100;
   const interceptCm = -group.result.endCorrectionMeasured * 100;
   const lineY = (x: number) => slopeCm * x + interceptCm;
 
   return (
     <svg width={W} height={H} className="regression-plot">
-      {/* ejes */}
       <line x1={padL} y1={padT} x2={padL} y2={H - padB} stroke="rgba(255,255,255,0.2)" />
       <line x1={padL} y1={H - padB} x2={W - padR} y2={H - padB} stroke="rgba(255,255,255,0.2)" />
 
-      {/* recta ajustada */}
       <line
         x1={sx(minX)}
         y1={sy(lineY(minX))}
@@ -61,12 +54,10 @@ function RegressionPlot({ group }: { group: Group }) {
         strokeDasharray="4 3"
       />
 
-      {/* puntos medidos */}
       {points.map((p, i) => (
         <circle key={i} cx={sx(p.x)} cy={sy(p.y)} r={4} fill="var(--success-color)" />
       ))}
 
-      {/* etiquetas de eje */}
       <text x={W / 2} y={H - 4} fill="var(--text-secondary)" fontSize={9} textAnchor="middle">
         modo (2n-1)
       </text>
@@ -108,11 +99,9 @@ export function RegressionPanel({ history }: RegressionPanelProps) {
         });
       }
     }
-    // El grupo con más modos primero.
     return result.sort((a, b) => b.result.nPoints - a.result.nPoints);
   }, [history]);
 
-  // Cuántos modos distintos llevamos por frecuencia (para guiar al estudiante).
   const distinctModesByFreq = useMemo(() => {
     const m = new Map<number, Set<number>>();
     for (const r of history) {
@@ -206,11 +195,10 @@ export function RegressionPanel({ history }: RegressionPanelProps) {
                   className="regression-verdict"
                   style={{ color: consistent ? 'var(--success-color)' : 'var(--warning-color)' }}
                 >
-                  {result.speedUncertainty > 0
-                    ? consistent
-                      ? `✓ Compatible con la teoría (error ${errorPct.toFixed(2)}%)`
-                      : `Desviación ${errorPct.toFixed(2)}% (fuera de ±Δv)`
-                    : `Error ${errorPct.toFixed(2)}% · captura un 3ᵉʳ modo para estimar Δv`}
+                  {consistent
+                    ? `✓ Compatible con la teoría (error ${errorPct.toFixed(2)}%)`
+                    : `Desviación ${errorPct.toFixed(2)}% (fuera de ±Δv)`}
+                  {result.nPoints === 2 && ' · con un 3ᵉʳ modo, Δv será estadístico'}
                 </div>
               </div>
             );

@@ -6,16 +6,15 @@ import * as THREE from 'three';
 interface VisualizerProps {
   mode: number;
   resonanceLevel: number;
-  waterFraction: number; // 0 (vacío) .. 1 (lleno de agua)
-  active?: boolean; // true sólo mientras se captura con el micrófono
+  waterFraction: number;
+  active?: boolean;
 }
 
 const TUBE_H = 10;
-const TUBE_TOP = TUBE_H / 2; //  5  -> boca abierta (vientre)
-const TUBE_BOTTOM = -TUBE_H / 2; // -5 -> fondo / agua (nodo)
+const TUBE_TOP = TUBE_H / 2;
+const TUBE_BOTTOM = -TUBE_H / 2;
 const TUBE_R = 1.25;
 
-/** Agua con cuerpo, superficie reflectante (con leve oleaje) y menisco contra el vidrio. */
 function Water({ waterFraction }: { waterFraction: number }) {
   const body = useRef<THREE.Mesh>(null);
   const surface = useRef<THREE.Mesh>(null);
@@ -74,10 +73,6 @@ function Water({ waterFraction }: { waterFraction: number }) {
   );
 }
 
-/**
- * Onda estacionaria de la columna de aire (sólo entre la superficie del agua y
- * la boca). Nodo en el agua, vientre en la boca; el nº de nodos depende del modo.
- */
 function ParticlesWave({ mode, resonanceLevel, waterFraction, active }: VisualizerProps) {
   const N = 260;
   const ref = useRef<THREE.InstancedMesh>(null);
@@ -87,7 +82,7 @@ function ParticlesWave({ mode, resonanceLevel, waterFraction, active }: Visualiz
     const t = [];
     for (let i = 0; i < N; i++) {
       t.push({
-        u: Math.random(), // posición a lo largo de la columna de aire (0 agua → 1 boca)
+        u: Math.random(),
         ang: Math.random() * Math.PI * 2,
         phase: Math.random() * Math.PI * 2,
       });
@@ -105,15 +100,11 @@ function ParticlesWave({ mode, resonanceLevel, waterFraction, active }: Visualiz
 
     const dummy = new THREE.Object3D();
     const color = new THREE.Color();
-    // Sólo hay onda mientras se captura con el micrófono. En reposo (active=false)
-    // todo queda oculto y quieto. Al capturar, se ve una onda base que crece con
-    // la resonancia (mínimo 18 % para que SIEMPRE se vea el patrón).
     const live = active ? Math.max(0.18, level) : 0;
     const fade = active ? 1 : 0;
 
     particles.forEach((p, i) => {
       const y = waterY + p.u * airLen;
-      // Envolvente del modo: sin(m·π/2·u) → nodo en el agua, vientre en la boca.
       const envelope = Math.abs(Math.sin((mode * Math.PI) / 2 * p.u));
       const amp = 0.9 * live * envelope;
       const osc = Math.sin(t + p.phase);
@@ -142,7 +133,6 @@ function ParticlesWave({ mode, resonanceLevel, waterFraction, active }: Visualiz
   );
 }
 
-/** Diapasón metálico (patas redondeadas) que aparece y vibra sólo con resonancia alta. */
 function TuningFork({ resonanceLevel }: { resonanceLevel: number }) {
   const group = useRef<THREE.Group>(null);
   const left = useRef<THREE.Mesh>(null);
@@ -172,7 +162,6 @@ function TuningFork({ resonanceLevel }: { resonanceLevel: number }) {
 
   return (
     <group ref={group} position={[0, TUBE_TOP + 1.8, 0]}>
-      {/* patas (tines) redondeadas */}
       <mesh ref={left} position={[-0.32, 0.55, 0]}>
         <capsuleGeometry args={[0.085, 2, 8, 20]} />
         <Metal />
@@ -181,17 +170,14 @@ function TuningFork({ resonanceLevel }: { resonanceLevel: number }) {
         <capsuleGeometry args={[0.085, 2, 8, 20]} />
         <Metal />
       </mesh>
-      {/* puente curvo en U */}
       <mesh position={[0, -0.55, 0]} rotation={[0, 0, Math.PI / 2]}>
         <capsuleGeometry args={[0.085, 0.5, 8, 20]} />
         <Metal />
       </mesh>
-      {/* mango */}
       <mesh position={[0, -1.35, 0]}>
         <capsuleGeometry args={[0.085, 1.2, 8, 20]} />
         <Metal />
       </mesh>
-      {/* pie */}
       <mesh position={[0, -2.1, 0]}>
         <cylinderGeometry args={[0.22, 0.22, 0.12, 24]} />
         <Metal />
@@ -200,7 +186,6 @@ function TuningFork({ resonanceLevel }: { resonanceLevel: number }) {
   );
 }
 
-/** Resplandor (pseudo-bloom) que se intensifica con la resonancia. */
 function ResonanceGlow({ resonanceLevel, waterFraction }: { resonanceLevel: number; waterFraction: number }) {
   const lightRef = useRef<THREE.PointLight>(null);
   const haloRef = useRef<THREE.Mesh>(null);
@@ -240,7 +225,6 @@ function ResonanceGlow({ resonanceLevel, waterFraction }: { resonanceLevel: numb
   );
 }
 
-/** Fondo degradado azulado para dar contraste al tubo (sin depender de internet). */
 function GradientBackdrop() {
   const texture = useMemo(() => {
     const c = document.createElement('canvas');
@@ -248,9 +232,9 @@ function GradientBackdrop() {
     c.height = 256;
     const ctx = c.getContext('2d')!;
     const g = ctx.createLinearGradient(0, 0, 0, 256);
-    g.addColorStop(0, '#454c5a'); // arriba, grafito claro
+    g.addColorStop(0, '#454c5a');
     g.addColorStop(0.55, '#262b34');
-    g.addColorStop(1, '#111419'); // abajo, grafito oscuro
+    g.addColorStop(1, '#111419');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, 16, 256);
     const t = new THREE.CanvasTexture(c);
@@ -269,8 +253,6 @@ function GradientBackdrop() {
 function GlassTube() {
   return (
     <group>
-      {/* pared de vidrio: transparente simple (sin transmisión) para que el
-          agua de detrás se vea con claridad, pero con reflejos y clearcoat. */}
       <mesh>
         <cylinderGeometry args={[TUBE_R, TUBE_R, TUBE_H, 64, 1, true]} />
         <meshPhysicalMaterial
@@ -286,17 +268,14 @@ function GlassTube() {
           depthWrite={false}
         />
       </mesh>
-      {/* labio redondeado de la boca */}
       <mesh position={[0, TUBE_TOP, 0]} rotation={[Math.PI / 2, 0, 0]}>
         <torusGeometry args={[TUBE_R, 0.06, 16, 64]} />
         <meshPhysicalMaterial color="#d7efff" roughness={0.08} metalness={0.1} clearcoat={1} envMapIntensity={1.4} />
       </mesh>
-      {/* fondo cerrado */}
       <mesh position={[0, TUBE_BOTTOM, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[TUBE_R, 48]} />
         <meshStandardMaterial color="#0f141d" metalness={0.4} roughness={0.5} side={THREE.DoubleSide} />
       </mesh>
-      {/* base / soporte de laboratorio */}
       <mesh position={[0, TUBE_BOTTOM - 0.2, 0]}>
         <cylinderGeometry args={[TUBE_R * 1.25, TUBE_R * 1.45, 0.5, 48]} />
         <meshStandardMaterial color="#252b36" metalness={0.7} roughness={0.35} envMapIntensity={1} />
@@ -329,7 +308,6 @@ export function ResonanceVisualizer3D({ mode, resonanceLevel, waterFraction, act
         <directionalLight position={[-7, 3, -4]} intensity={0.7} color="#5a82ff" />
         <spotLight position={[0, 12, 6]} angle={0.5} penumbra={1} intensity={0.8} color="#bfe3ff" />
 
-        {/* Entorno generado en escena (reflejos realistas sin depender de internet) */}
         <Environment resolution={128}>
           <Lightformer intensity={2.2} position={[0, 4, -6]} scale={[10, 10, 1]} color="#8fb8ff" />
           <Lightformer intensity={1.4} position={[5, 1, 4]} scale={[4, 10, 1]} color="#ffffff" />

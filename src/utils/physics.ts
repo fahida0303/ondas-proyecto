@@ -1,48 +1,30 @@
-/**
- * Motor de física del Asistente de Resonancia.
- *
- * Todas las funciones son puras (sin estado, sin React) para poder testearlas
- * y razonar sobre ellas de forma aislada. La práctica determina la velocidad
- * del sonido con un tubo resonante cerrado en el agua y abierto en la boca,
- * por lo que las resonancias ocurren en los armónicos impares:
- *
- *      L_n = (2n-1) · λ/4 - e        con  (2n-1) ∈ {1, 3, 5}  (= "modo")
- *
- * donde `e` es la corrección de extremo del vientre que sobresale de la boca.
- */
+// Motor de física del Asistente de Resonancia: tubo cerrado en el agua y abierto
+// en la boca. Resuena en armónicos impares: L_n = (2n-1)·λ/4 - e.
 
-/** Incertidumbres instrumentales por defecto (1σ). */
-export const LENGTH_UNCERTAINTY_CM = 0.2; // resolución típica al leer el nivel de agua
-export const FREQ_UNCERTAINTY_HZ = 1.0; // tolerancia del diapasón / resolución FFT
+// Incertidumbres instrumentales por defecto (1σ).
+export const LENGTH_UNCERTAINTY_CM = 0.2;
+export const FREQ_UNCERTAINTY_HZ = 1.0;
 
-/**
- * Velocidad teórica del sonido en aire seco a temperatura T (°C).
- * Usa la forma exacta v = v0·√(1 + T/273.15) en lugar de la lineal 331.4 + 0.6T,
- * más precisa lejos de 0 °C. v0 = 331.45 m/s.
- */
+// Mide la velocidad teórica del sonido en aire seco a temperatura T (°C).
 export function theoreticalSpeedOfSound(temperatureC: number): number {
   return 331.45 * Math.sqrt(1 + temperatureC / 273.15);
 }
 
-/** Corrección de extremo de un tubo con un solo extremo abierto: e ≈ 0.6·r = 0.3·D. */
+// Mide la corrección de extremo del vientre que sobresale de la boca: e = 0.3·D.
 export function endCorrection(diameterCm: number): number {
   return 0.3 * (diameterCm / 100);
 }
 
 export interface SinglePointResult {
-  wavelength: number; // λ (m)
-  experimentalSpeed: number; // v = f·λ (m/s)
-  theoreticalSpeed: number; // v_teórica(T) (m/s)
-  errorPercentage: number; // |v - v_teo| / v_teo · 100
-  speedUncertainty: number; // Δv (m/s), propagación de incertidumbre
+  wavelength: number;
+  experimentalSpeed: number;
+  theoreticalSpeed: number;
+  errorPercentage: number;
+  speedUncertainty: number;
 }
 
-/**
- * Velocidad del sonido a partir de UNA sola resonancia, usando la corrección
- * de extremo estimada e = 0.3·D. Incluye propagación de incertidumbre:
- *
- *      Δv/v = √[ (Δf/f)² + (ΔL_ef/L_ef)² ]
- */
+// Mide la velocidad del sonido a partir de UNA resonancia (asume e = 0.3·D) y
+// propaga la incertidumbre: Δv/v = √[(Δf/f)² + (ΔL/L)²].
 export function singlePointResult(params: {
   frequency: number;
   lengthCm: number;
@@ -80,17 +62,12 @@ export function singlePointResult(params: {
 }
 
 export interface PredictedResonance {
-  mode: number; // armónico impar (2n-1): 1, 3, 5, 7...
-  lengthCm: number; // longitud de columna de aire donde resuena (cm)
+  mode: number;
+  lengthCm: number;
 }
 
-/**
- * Predice TODAS las longitudes de columna de aire que resuenan para una
- * frecuencia dada y que caben dentro del tubo. Como las resonancias del tubo
- * cerrado caen en los armónicos impares, aparecen cada λ/2:
- *
- *      L_m = m·λ/4 - e        con  m = 1, 3, 5, 7...
- */
+// Predice las longitudes de columna de aire que resuenan y caben en el tubo
+// (armónicos impares, cada λ/2): L_m = m·λ/4 - e.
 export function predictedResonances(
   frequency: number,
   temperatureC: number,
@@ -98,8 +75,8 @@ export function predictedResonances(
   maxLengthCm: number
 ): PredictedResonance[] {
   const v = theoreticalSpeedOfSound(temperatureC);
-  const lambda = v / frequency; // m
-  const e = endCorrection(diameterCm); // m
+  const lambda = v / frequency;
+  const e = endCorrection(diameterCm);
   const out: PredictedResonance[] = [];
 
   for (let m = 1; m <= 199; m += 2) {
@@ -110,12 +87,8 @@ export function predictedResonances(
   return out;
 }
 
-/**
- * Respuesta de resonancia esperada (0..1) para una columna de aire dada.
- * Modela cada resonancia como una curva de Lorentz (campana) centrada en L_m;
- * el valor es 1 justo en un pico y cae suavemente al alejarse. `halfWidthCm`
- * controla qué tan "afilada" es la resonancia (ancho a media altura ≈ 2·hw).
- */
+// Mide la respuesta esperada (0..1) de una columna de aire como curva de Lorentz
+// por pico: 1 en el pico, cae al alejarse.
 export function resonanceResponse(
   airColumnCm: number,
   peaks: PredictedResonance[],
@@ -130,7 +103,7 @@ export function resonanceResponse(
   return best;
 }
 
-/** Pico de resonancia más cercano a una longitud de aire dada (o null si no hay). */
+// Encuentra el pico de resonancia más cercano (deltaCm > 0 ⇒ alargar la columna).
 export function nearestResonance(
   airColumnCm: number,
   peaks: PredictedResonance[]
@@ -142,43 +115,31 @@ export function nearestResonance(
       best = p;
     }
   }
-  // deltaCm > 0 ⇒ hay que ALARGAR la columna (bajar el agua) para llegar al pico.
   return { peak: best, deltaCm: best.lengthCm - airColumnCm };
 }
 
 export interface RegressionPoint {
-  mode: number; // (2n-1) ∈ {1, 3, 5}
+  mode: number;
   lengthCm: number;
 }
 
 export interface RegressionResult {
-  /** Velocidad del sonido medida por la pendiente, SIN corrección supuesta. */
-  speed: number; // v = f·λ (m/s)
-  speedUncertainty: number; // Δv del error estándar de la pendiente (m/s)
-  wavelength: number; // λ = 4·pendiente (m)
-  /** Corrección de extremo MEDIDA: e = -ordenada al origen (m). */
+  speed: number;
+  speedUncertainty: number;
+  wavelength: number;
   endCorrectionMeasured: number;
-  rSquared: number; // bondad del ajuste lineal
-  nPoints: number; // nº de modos distintos usados
-  modes: number[]; // modos usados
+  rSquared: number;
+  nPoints: number;
+  modes: number[];
 }
 
-/**
- * Método de diferencia de modos / regresión lineal.
- *
- * Ajustando L_n = (λ/4)·(2n-1) - e a varias resonancias, la pendiente da λ
- * (y por tanto v = f·λ) SIN necesidad de suponer la corrección de extremo: ésta
- * se cancela y aparece como la ordenada al origen (e = -intercepto), que se
- * mide empíricamente. Es el método de máxima precisión del laboratorio.
- *
- * Requiere al menos 2 modos distintos. La incertidumbre de v se obtiene del
- * error estándar de la pendiente (requiere ≥3 puntos para ser no nula).
- */
+// Mide la velocidad por regresión de L_n = (λ/4)·n - e: la pendiente da λ (y v)
+// sin suponer e, y e se mide como -intercepto. Δv combina el error estadístico
+// de la pendiente (n≥3) con el piso instrumental ΔL/√Sxx, tomando el mayor.
 export function regressionResult(
   points: RegressionPoint[],
   frequency: number
 ): RegressionResult | null {
-  // Promediar longitudes que comparten modo (más datos ⇒ mejor estimación).
   const byMode = new Map<number, number[]>();
   for (const p of points) {
     const arr = byMode.get(p.mode) ?? [];
@@ -207,20 +168,20 @@ export function regressionResult(
     sxy += (xs[i] - meanX) * (ys[i] - meanY);
     syy += (ys[i] - meanY) ** 2;
   }
-  if (sxx === 0) return null; // todos los modos iguales
+  if (sxx === 0) return null;
 
-  const slope = sxy / sxx; // λ/4
-  const intercept = meanY - slope * meanX; // -e
+  const slope = sxy / sxx;
+  const intercept = meanY - slope * meanX;
 
   const wavelength = 4 * slope;
   const speed = frequency * wavelength;
   const endCorrectionMeasured = -intercept;
 
-  // Coeficiente de determinación.
   const rSquared = syy === 0 ? 1 : (sxy * sxy) / (sxx * syy);
 
-  // Error estándar de la pendiente → Δv = f · 4 · SE(pendiente).
-  let speedUncertainty = 0;
+  const dL = LENGTH_UNCERTAINTY_CM / 100;
+  const instrumentalSlopeErr = dL / Math.sqrt(sxx);
+  let slopeErr = instrumentalSlopeErr;
   if (n >= 3) {
     let residualSS = 0;
     for (let i = 0; i < n; i++) {
@@ -228,8 +189,9 @@ export function regressionResult(
       residualSS += (ys[i] - predicted) ** 2;
     }
     const slopeStdErr = Math.sqrt(residualSS / (n - 2) / sxx);
-    speedUncertainty = frequency * 4 * slopeStdErr;
+    slopeErr = Math.max(slopeStdErr, instrumentalSlopeErr);
   }
+  const speedUncertainty = frequency * 4 * slopeErr;
 
   return {
     speed,

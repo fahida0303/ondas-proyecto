@@ -19,17 +19,23 @@ export function CalculadorFisico({
 }: CalculadorFisicoProps) {
   const [lengthCm, setLengthCm] = useState<number | ''>('');
 
-  // Vista previa en vivo del resultado mientras se escribe la longitud.
+  const hasMeasured = detectedFrequency > 0;
+  const [freqSource, setFreqSource] = useState<'nominal' | 'measured'>(
+    hasMeasured ? 'measured' : 'nominal'
+  );
+  const usedFrequency = freqSource === 'measured' && hasMeasured ? detectedFrequency : frequency;
+  const freqDeviation = hasMeasured ? detectedFrequency - frequency : 0;
+
   const preview = useMemo(() => {
     if (lengthCm === '' || Number(lengthCm) <= 0) return null;
     return singlePointResult({
-      frequency,
+      frequency: usedFrequency,
       lengthCm: Number(lengthCm),
       mode,
       diameterCm: diameter,
       temperature,
     });
-  }, [lengthCm, frequency, mode, diameter, temperature]);
+  }, [lengthCm, usedFrequency, mode, diameter, temperature]);
 
   const handleCalculate = () => {
     if (lengthCm === '' || !preview) return;
@@ -40,6 +46,7 @@ export function CalculadorFisico({
       mode,
       frequency,
       detectedFrequency,
+      usedFrequency,
       maxAmplitude,
       temperature,
       diameter,
@@ -66,6 +73,33 @@ export function CalculadorFisico({
           <p>Amplitud máxima de referencia: <strong>{maxAmplitude}</strong> (unidades relativas).</p>
           <p>Mira la cinta métrica: ¿qué longitud de aire marca el punto donde suena más fuerte?</p>
         </div>
+
+        {hasMeasured && (
+          <div className="form-group" style={{ marginBottom: '1.25rem', textAlign: 'left' }}>
+            <label className="form-label">Frecuencia para el cálculo</label>
+            <div className="predictor-peaks">
+              <button
+                className={`predictor-peak-chip ${freqSource === 'measured' ? 'active' : ''}`}
+                onClick={() => setFreqSource('measured')}
+                title="Frecuencia real medida por el micrófono (recomendada)"
+              >
+                Medida: {detectedFrequency.toFixed(1)} Hz
+              </button>
+              <button
+                className={`predictor-peak-chip ${freqSource === 'nominal' ? 'active' : ''}`}
+                onClick={() => setFreqSource('nominal')}
+                title="Frecuencia nominal grabada en el diapasón"
+              >
+                Nominal: {frequency} Hz
+              </button>
+            </div>
+            {Math.abs(freqDeviation) > 2 && (
+              <span className="form-hint" style={{ color: 'var(--warning-color)' }}>
+                Tu fuente suena {Math.abs(freqDeviation).toFixed(1)} Hz {freqDeviation > 0 ? 'por encima' : 'por debajo'} de la nominal: usar la medida reduce el error en v = f·λ.
+              </span>
+            )}
+          </div>
+        )}
 
         <div className="form-group" style={{ marginBottom: '1.5rem', textAlign: 'left' }}>
           <label className="form-label">Longitud de aire L medida (cm)</label>

@@ -54,9 +54,7 @@ export function StatusDisplay({
 
   return (
     <div className="glass-panel" style={{ overflow: 'hidden' }}>
-      
-      {/* Clipping Warning Overlay */}
-      <div 
+      <div
         className="clipping-overlay"
         style={{ opacity: isClipping ? 1 : 0 }}
       >

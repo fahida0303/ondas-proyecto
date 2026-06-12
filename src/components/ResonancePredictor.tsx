@@ -11,7 +11,6 @@ interface ResonancePredictorProps {
   frequency: number;
   temperature: number;
   diameter: number;
-  /** Reporta la fracción de agua (0..1) para el nivel del tubo 3D. */
   onSimulatedWater: (fraction: number) => void;
 }
 
@@ -36,13 +35,11 @@ export function ResonancePredictor({
   const responsePct = Math.round(response * 100);
   const nearest = nearestResonance(airColumnCm, peaks);
 
-  // El nivel de agua del tubo 3D refleja siempre el slider del predictor.
   useEffect(() => {
     const fraction = Math.max(0, Math.min(1, 1 - airColumnCm / tubeLengthCm));
     onSimulatedWater(fraction);
   }, [airColumnCm, tubeLengthCm, onSimulatedWater]);
 
-  // --- Curva de respuesta (SVG) ---
   const W = 300;
   const H = 120;
   const padL = 8;
@@ -107,14 +104,10 @@ export function ResonancePredictor({
         </div>
       </div>
 
-      {/* Curva de respuesta esperada */}
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="predictor-plot" preserveAspectRatio="none">
-        {/* relleno bajo la curva */}
         <path d={`${curvePath} L ${sx(tubeLengthCm)} ${sy(0)} L ${sx(0)} ${sy(0)} Z`} fill="rgba(0,229,255,0.12)" />
-        {/* curva */}
         <path d={curvePath} fill="none" stroke="var(--accent-color)" strokeWidth={2} />
 
-        {/* marcas de cada resonancia */}
         {peaks.map((p) => (
           <g key={p.mode}>
             <line x1={sx(p.lengthCm)} y1={sy(1)} x2={sx(p.lengthCm)} y2={sy(0)} stroke="rgba(0,255,136,0.4)" strokeDasharray="3 3" />
@@ -124,12 +117,10 @@ export function ResonancePredictor({
           </g>
         ))}
 
-        {/* posición actual del nivel de agua */}
         <line x1={sx(airColumnCm)} y1={padT} x2={sx(airColumnCm)} y2={H - padB} stroke="var(--warning-color)" strokeWidth={2} />
         <circle cx={sx(airColumnCm)} cy={sy(response)} r={5} fill="var(--warning-color)" />
       </svg>
 
-      {/* slider grande para el nivel de agua */}
       <input
         type="range"
         min={0}
@@ -140,7 +131,6 @@ export function ResonancePredictor({
         className="predictor-slider"
       />
 
-      {/* lectura de intensidad esperada */}
       <div className="predictor-readout">
         <div>
           <span className="value-label">Intensidad esperada</span>
@@ -153,7 +143,6 @@ export function ResonancePredictor({
         </div>
       </div>
 
-      {/* guía: hacia dónde mover el agua */}
       {nearest && (
         <div
           className="predictor-guidance"
@@ -191,7 +180,6 @@ export function ResonancePredictor({
         </div>
       )}
 
-      {/* lista de resonancias predichas */}
       {peaks.length > 0 && (
         <div className="predictor-peaks">
           {peaks.map((p) => (

@@ -1,0 +1,616 @@
+% =====================================================================
+%  Asistente de Resonancia 3D — Documentación técnica integral
+%  Física, fórmulas, procesamiento de señal, arquitectura y tecnologías
+%  Compilar con: pdflatex Documentacion_Tecnica_App.tex  (dos veces)
+% =====================================================================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[spanish,es-noshorthands]{babel}
+\decimalpoint
+\usepackage{amsmath,amssymb}
+\usepackage{siunitx}
+\sisetup{output-decimal-marker={.},separate-uncertainty=true}
+\usepackage{booktabs}
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=blue!60!black,urlcolor=blue!60!black}
+
+% --- Estilo para fragmentos de código TypeScript ---
+\definecolor{codebg}{RGB}{245,247,250}
+\definecolor{codekw}{RGB}{0,92,153}
+\definecolor{codecm}{RGB}{106,135,89}
+\lstdefinelanguage{TypeScript}{
+  keywords={const,let,function,return,export,import,interface,type,for,if,else,new,true,false,null},
+  keywordstyle=\color{codekw}\bfseries,
+  comment=[l]{//},
+  commentstyle=\color{codecm}\itshape,
+  sensitive=true
+}
+\lstset{
+  language=TypeScript,
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codebg},
+  frame=single, framerule=0pt,
+  breaklines=true, showstringspaces=false,
+  numbers=none, xleftmargin=6pt, xrightmargin=6pt
+}
+
+\newcommand{\vexp}{v_{\text{exp}}}
+\newcommand{\vteo}{v_{\text{teo}}}
+\newcommand{\Lef}{L_{\text{ef}}}
+
+\title{\textbf{Asistente de Resonancia 3D}\\[2mm]
+\large Documentación técnica integral: física, fórmulas, procesamiento de señal,\\
+arquitectura de software y tecnologías empleadas}
+\author{Proyecto de Laboratorio de Ondas}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent Este documento describe de forma exhaustiva el \emph{Asistente de Resonancia 3D},
+una aplicación web que guía la determinación experimental de la velocidad del sonido mediante
+un tubo resonante cerrado--abierto. Se documentan: (i) el fundamento físico y todas las
+fórmulas implementadas, incluida la propagación de incertidumbres y el método de regresión
+por diferencia de modos; (ii) la cadena de procesamiento digital de señal que captura y
+analiza el audio del micrófono en tiempo real (FFT de 16\,384 puntos, interpolación
+parabólica sub-Hz, calibración automática de ruido, máquina de estados de detección de
+picos); (iii) el motor de visualización 3D de la onda estacionaria; y (iv) la arquitectura de
+software y el inventario completo de tecnologías y bibliotecas. Complementa al documento
+\emph{Procedimiento\_Resonancia.tex}, centrado en el protocolo de laboratorio.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% =====================================================================
+\section{Descripción general}
+% =====================================================================
+
+El Asistente de Resonancia 3D es una aplicación de página única (SPA) que se ejecuta en el
+navegador, sin servidor ni conexión a internet una vez cargada. Su objetivo es triple:
+
+\begin{enumerate}[nosep]
+  \item \textbf{Detectar} en tiempo real, mediante el micrófono, el pico de resonancia de una
+        columna de aire excitada por un diapasón de frecuencia conocida.
+  \item \textbf{Calcular} la velocidad del sonido por dos métodos independientes (punto único
+        y regresión por diferencia de modos), con propagación rigurosa de incertidumbres.
+  \item \textbf{Enseñar}: un tutorial interactivo de 11 pasos con esquemas vectoriales,
+        fórmulas renderizadas con KaTeX y una visualización 3D de la onda estacionaria
+        hacen visible la física que ocurre dentro del tubo.
+\end{enumerate}
+
+\subsection{Flujo de uso}
+\begin{enumerate}[nosep]
+  \item El usuario introduce frecuencia nominal $f$, armónico $n$, temperatura $T$ y diámetro $D$.
+  \item Pulsa \emph{Calibrar y Buscar Resonancia}: la app mide el ruido ambiente durante
+        \SI{3}{\second} y fija un umbral adaptativo.
+  \item Hace sonar el diapasón sobre la boca del tubo y varía el nivel de agua; la barra de
+        amplitud y el tubo 3D reaccionan en vivo.
+  \item Al pasar por un máximo, registra la longitud $L$ leída en la cinta métrica; la app
+        calcula $\vexp \pm \Delta v$ al instante.
+  \item Con dos o más modos registrados, el panel de regresión calcula la velocidad sin
+        suponer la corrección de extremo, y la mide empíricamente.
+\end{enumerate}
+
+% =====================================================================
+\section{Fundamento físico y fórmulas implementadas}
+% =====================================================================
+
+Todas las fórmulas de esta sección están implementadas como funciones puras en
+\texttt{src/utils/physics.ts}.
+
+\subsection{Condiciones de contorno y armónicos impares}
+
+El tubo está cerrado abajo (superficie del agua) y abierto arriba (boca). Para la onda de
+desplazamiento del aire esto impone un \textbf{nodo} en el agua (el aire no puede penetrar el
+líquido) y un \textbf{vientre} en la boca (aire libre, presión atmosférica). La distancia
+mínima entre un nodo y un vientre es $\lambda/4$, y cada par nodo--vientre adicional añade
+$\lambda/2$. Por tanto sólo resuenan las longitudes
+\begin{equation}
+  L_n \;=\; n\,\frac{\lambda}{4} \;-\; e,
+  \qquad n = 1,\,3,\,5,\,7,\dots
+  \label{eq:Ln}
+\end{equation}
+Los armónicos pares exigirían extremos del mismo tipo (nodo--nodo o vientre--vientre),
+incompatibles con un tubo cerrado--abierto; quedan \textbf{prohibidos por las condiciones de
+contorno}, no por elección del software.
+
+\subsection{Corrección de extremo}
+
+El vientre no se forma exactamente en la boca: la columna vibrante arrastra un ``tapón'' de
+aire exterior cuya inercia equivale a alargar acústicamente el tubo. Para un tubo circular
+sin pestaña, la solución exacta del problema de difracción (Levine y Schwinger, 1948) da
+\begin{equation}
+  e \;=\; 0.6133\,r \;\approx\; 0.6\,r \;=\; 0.3\,D ,
+  \label{eq:endcorr}
+\end{equation}
+válida mientras $\lambda \gg D$. En el código: \texttt{endCorrection(D) = 0.3·(D/100)} con
+$D$ en \si{\centi\metre} y $e$ en \si{\metre}. La regresión de la sección~\ref{sec:regresion}
+permite \emph{medir} $e$ y contrastarla con \eqref{eq:endcorr}.
+
+\subsection{Velocidad teórica del sonido}
+
+Se usa la forma exacta del gas ideal (aire seco), en lugar de la aproximación lineal
+$331.4 + 0.6\,T$:
+\begin{equation}
+  \vteo(T) \;=\; v_0\,\sqrt{1 + \frac{T}{273.15}},
+  \qquad v_0 = \SI{331.45}{\metre\per\second},\; T\text{ en }^{\circ}\text{C}.
+  \label{eq:vteo}
+\end{equation}
+A \SI{20}{\celsius}: $\vteo = \SI{343.4}{\metre\per\second}$. La sensibilidad térmica es
+$\partial v/\partial T \approx \SI{0.6}{\metre\per\second\per\kelvin}$, de ahí que la app
+exija la temperatura real del aula.
+
+\subsection{Método de punto único}
+
+A partir de \emph{una} resonancia medida $(L, n)$, asumiendo $e = 0.3D$:
+\begin{align}
+  \Lef &= L + e, \\
+  \lambda &= \frac{4\,\Lef}{n}, \label{eq:lambda} \\
+  \vexp &= f\,\lambda . \label{eq:vexp}
+\end{align}
+El error porcentual frente a la teoría:
+\begin{equation}
+  \varepsilon \;=\; \frac{\lvert \vexp - \vteo \rvert}{\vteo}\times 100\,\% .
+\end{equation}
+
+\paragraph{Propagación de incertidumbre.} Con incertidumbres instrumentales por defecto
+$\Delta f = \SI{1.0}{\hertz}$ (tolerancia del diapasón / resolución FFT) y
+$\Delta L = \SI{0.2}{\centi\metre}$ (lectura del nivel de agua), y dado que
+$v = 4 f \Lef / n$ es un producto, las incertidumbres relativas se suman en cuadratura:
+\begin{equation}
+  \frac{\Delta v}{v} \;=\;
+  \sqrt{\left(\frac{\Delta f}{f}\right)^{2} +
+        \left(\frac{\Delta L}{\Lef}\right)^{2}} .
+  \label{eq:propagacion}
+\end{equation}
+
+\subsection{Método de regresión por diferencia de modos}
+\label{sec:regresion}
+
+Es el método de máxima precisión. Ajustando por mínimos cuadrados la recta
+\begin{equation}
+  L_n = \underbrace{\tfrac{\lambda}{4}}_{\text{pendiente }m}\, n \;+\;
+        \underbrace{(-e)}_{\text{ordenada }b},
+\end{equation}
+la corrección de extremo \textbf{se cancela en las diferencias} (es idéntica para todos los
+modos) y aparece como la ordenada al origen, es decir, \emph{se mide}:
+\begin{equation}
+  \lambda = 4m, \qquad \vexp = 4 f m, \qquad e_{\text{medida}} = -b .
+\end{equation}
+
+\paragraph{Estimadores de mínimos cuadrados.} Con puntos $(x_i, y_i) = (n_i, L_i)$
+(las longitudes que comparten modo se promedian previamente):
+\begin{align}
+  S_{xx} &= \sum_i (x_i - \bar{x})^2, \qquad
+  S_{xy} = \sum_i (x_i - \bar{x})(y_i - \bar{y}), \qquad
+  S_{yy} = \sum_i (y_i - \bar{y})^2, \\
+  m &= \frac{S_{xy}}{S_{xx}}, \qquad
+  b = \bar{y} - m\,\bar{x}, \qquad
+  R^2 = \frac{S_{xy}^{\,2}}{S_{xx} S_{yy}} .
+\end{align}
+
+\paragraph{Incertidumbre de la pendiente.} La app combina dos estimaciones y reporta siempre
+la mayor, evitando un ``$\pm 0$'' engañoso:
+\begin{itemize}[nosep]
+  \item \textbf{Error estadístico} (residuos, requiere $N \ge 3$ modos):
+  \begin{equation}
+    \mathrm{SE}(m) = \sqrt{\dfrac{\sum_i (y_i - m x_i - b)^2}{(N-2)\,S_{xx}}} .
+  \end{equation}
+  \item \textbf{Piso instrumental} (propagación de la lectura $\Delta L$, única estimación
+  posible con $N = 2$):
+  \begin{equation}
+    \Delta m_{\text{inst}} = \frac{\Delta L}{\sqrt{S_{xx}}} .
+  \end{equation}
+\end{itemize}
+\begin{equation}
+  \Delta v \;=\; 4 f \cdot \max\!\bigl(\mathrm{SE}(m),\, \Delta m_{\text{inst}}\bigr) .
+\end{equation}
+
+\subsection{Predictor de resonancias}
+
+Antes de medir, la app predice todas las longitudes que resonarán dentro de un tubo de largo
+$L_{\text{tubo}}$:
+\begin{equation}
+  L_m = m\,\frac{\lambda_{\text{teo}}}{4} - e,
+  \qquad \lambda_{\text{teo}} = \frac{\vteo(T)}{f},
+  \qquad m = 1, 3, 5, \dots \;\text{mientras}\; L_m \le L_{\text{tubo}} .
+\end{equation}
+La respuesta esperada en función de la columna de aire $\ell$ se modela como una curva de
+Lorentz por pico (resonador con pérdidas):
+\begin{equation}
+  R(\ell) \;=\; \max_m \; \frac{1}{1 + \left(\dfrac{\ell - L_m}{w}\right)^{2}},
+  \qquad w = \SI{1.2}{\centi\metre}\ \text{(semianchura)} .
+  \label{eq:lorentz}
+\end{equation}
+Picos consecutivos distan $\lambda/2$, lo que la interfaz comunica explícitamente.
+
+\subsection{Frecuencia nominal frente a frecuencia medida}
+
+La FFT mide la frecuencia real de la fuente con precisión sub-Hz
+(sección~\ref{sec:interpolacion}). Un diapasón real puede desviarse algunos Hz de su valor
+grabado (desgaste, temperatura del metal). Al registrar un pico, el usuario elige la
+frecuencia del cálculo:
+\begin{itemize}[nosep]
+  \item \textbf{Medida} (por defecto si está disponible): físicamente preferible, pues
+        $v = f\lambda$ usa la excitación real.
+  \item \textbf{Nominal}: la grabada en el diapasón; se conserva siempre como clave de
+        agrupación de la regresión.
+\end{itemize}
+Si difieren en más de \SI{2}{\hertz}, la interfaz lo advierte y cuantifica la desviación.
+
+% =====================================================================
+\section{Procesamiento digital de señal}
+% =====================================================================
+
+Implementado en \texttt{src/hooks/useResonanceAnalyzer.ts} sobre la \textbf{Web Audio API}
+del navegador, sin bibliotecas DSP externas.
+
+\subsection{Captura de audio}
+
+Se solicita el micrófono desactivando todo el preprocesado del navegador, que destruiría la
+medición:
+
+\begin{lstlisting}
+navigator.mediaDevices.getUserMedia({
+  audio: { echoCancellation: false,
+           autoGainControl:  false,
+           noiseSuppression: false }
+});
+\end{lstlisting}
+
+\begin{itemize}[nosep]
+  \item \texttt{echoCancellation: false} --- el cancelador de eco atenúa tonos sostenidos.
+  \item \texttt{autoGainControl: false} --- la ganancia automática falsearía la comparación
+        de amplitudes entre posiciones del agua (¡el corazón del experimento!).
+  \item \texttt{noiseSuppression: false} --- el supresor confundiría el tono puro del
+        diapasón con ruido estacionario y lo eliminaría.
+\end{itemize}
+
+\subsection{Análisis espectral}
+
+Un \texttt{AnalyserNode} calcula la FFT en cada cuadro de animación
+(\texttt{requestAnimationFrame}, $\approx 60$ veces por segundo):
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Parámetro & Valor & Consecuencia \\
+\midrule
+\texttt{fftSize} & $16\,384$ & $8\,192$ bins espectrales \\
+Frec.\ de muestreo típica & \SI{48}{\kilo\hertz} & Nyquist = \SI{24}{\kilo\hertz} \\
+Resolución por bin & $48\,000/16\,384 \approx \SI{2.93}{\hertz}$ & base de la interpolación \\
+\texttt{smoothingTimeConstant} & $0$ & el suavizado lo controla la app (EMA propia) \\
+Escala de magnitud & bytes $0$--$255$ & \texttt{getByteFrequencyData} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Banda objetivo y tono dominante global}
+
+La amplitud de resonancia se busca sólo en la banda $f \pm \SI{15}{\hertz}$ alrededor de la
+frecuencia objetivo. En paralelo se localiza el pico dominante de \emph{todo} el espectro
+audible ($> \SI{80}{\hertz}$). El pico en banda se considera genuino únicamente si domina el
+espectro:
+\begin{equation}
+  A_{\text{banda}} \;\ge\; 0.5\, A_{\text{global}} .
+\end{equation}
+Esto descarta falsos positivos: por ejemplo, un tono de \SI{440}{\hertz} cuando se busca
+\SI{1024}{\hertz} produciría energía residual en la banda, pero el criterio lo rechaza y la
+interfaz muestra el tono dominante fuera de banda para diagnóstico (incluye el caso del modo
+\emph{clang} del diapasón, $\sim 6.25 f_1$, excitado por golpes demasiado fuertes).
+
+\subsection{Interpolación parabólica sub-bin}
+\label{sec:interpolacion}
+
+La resolución cruda de \SI{2.93}{\hertz} se refina ajustando una parábola a los tres bins
+alrededor del máximo $(a, b, c) = (A_{k-1}, A_k, A_{k+1})$:
+\begin{equation}
+  \delta \;=\; \frac{1}{2}\,\frac{a - c}{a - 2b + c},
+  \qquad \delta \in [-0.5,\, 0.5],
+  \qquad f_{\text{refinada}} = (k + \delta)\,\frac{f_s}{N_{\text{FFT}}} .
+  \label{eq:parabola}
+\end{equation}
+El vértice de la parábola estima la frecuencia verdadera con precisión mejor que
+\SI{1}{\hertz}, suficiente para detectar diapasones desafinados.
+
+\subsection{Calibración automática del ruido}
+
+Durante los primeros \SI{3000}{\milli\second} tras iniciar la captura, la app promedia la
+amplitud en banda del ambiente y fija el umbral adaptativo
+\begin{equation}
+  \theta \;=\; \max\bigl(20,\; \overline{A}_{\text{ruido}} + 15\bigr)
+  \qquad \text{(escala 0--255)} .
+\end{equation}
+Por debajo de $\theta$ la señal se trata como silencio. Así la app funciona igual en un aula
+silenciosa que en una ruidosa.
+
+\subsection{Suavizado exponencial}
+
+La amplitud cruda fluctúa cuadro a cuadro; se filtra con una media móvil exponencial (EMA):
+\begin{equation}
+  \tilde{A}_t \;=\; \alpha\,\tilde{A}_{t-1} + (1-\alpha)\,A_t,
+  \qquad \alpha = 0.85 .
+\end{equation}
+Equivale a un filtro paso-bajo de primer orden con constante de tiempo
+$\tau \approx \dfrac{1}{(1-\alpha)\,60\,\text{Hz}} \approx \SI{0.1}{\second}$:
+suficientemente rápido para seguir el barrido del agua y suficientemente lento para ignorar
+parpadeos de la FFT.
+
+\subsection{Máquina de estados de detección}
+
+\begin{center}
+\begin{tabular}{@{}llp{7.2cm}@{}}
+\toprule
+Estado & Transición de entrada & Significado \\
+\midrule
+\texttt{idle} & --- & Sin captura. \\
+\texttt{calibrating} & al pulsar \emph{Calibrar} & Midiendo ruido ambiente (\SI{3}{\second}). \\
+\texttt{waiting} & fin de calibración o $\tilde{A} < \theta$ & Esperando señal sobre el umbral. \\
+\texttt{stabilizing} & $A \ge \theta$ & Señal presente; aún sin confirmar estabilidad. \\
+\texttt{measuring} & 10 cuadros consecutivos $\ge \theta$ & Medición activa; se rastrea el máximo. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Detección del pico (máximo histórico con histéresis).} Durante
+\texttt{measuring} se mantiene el máximo observado $A_{\max}$. Se declara ``pico encontrado''
+cuando la amplitud cae por debajo de la banda de tolerancia
+\begin{equation}
+  \tilde{A} < (1 - 0.05)\,A_{\max}
+\end{equation}
+durante más de 25 cuadros consecutivos ($\approx \SI{0.4}{\second}$), con la condición de
+robustez $A_{\max} > 2\theta$. El contador de caída se decrementa si la señal se recupera
+(histéresis), evitando falsos disparos por fluctuaciones. El nivel de resonancia mostrado es
+$\tilde{A}/A_{\max} \times 100\,\%$.
+
+\subsection{Detección de saturación (clipping)}
+
+Si cualquier bin alcanza $\ge 250/255$, el micrófono está saturado: la amplitud deja de ser
+comparable entre mediciones (recorte no lineal). La app cubre el visualizador con un aviso a
+pantalla completa hasta que el nivel baje.
+
+% =====================================================================
+\section{Motor de visualización 3D}
+% =====================================================================
+
+Implementado en \texttt{src/components/ResonanceVisualizer3D.tsx} con Three.js mediante
+\emph{React Three Fiber}. La escena renderiza, a 60 fps:
+
+\subsection{La onda estacionaria como campo de partículas}
+
+260 esferas instanciadas (\texttt{InstancedMesh}: una sola llamada de dibujo) ocupan la
+columna de aire entre la superficie del agua y la boca. Cada partícula $i$ tiene una
+coordenada normalizada $u_i \in [0,1]$ (0 = agua, 1 = boca) y oscila radialmente con la
+\textbf{envolvente exacta del modo}:
+\begin{equation}
+  A(u) \;=\; \Bigl\lvert \sin\!\Bigl(\frac{n\pi}{2}\,u\Bigr) \Bigr\rvert ,
+  \label{eq:envolvente}
+\end{equation}
+que cumple las condiciones de contorno reales: $A(0)=0$ (nodo en el agua) y $A(1)=1$
+(vientre en la boca) para $n$ impar. El desplazamiento instantáneo es
+$r_i(t) = 0.9\,\ell\,A(u_i)\,\sin(\omega t + \varphi_i)$, donde $\ell \in [0,1]$ es el nivel
+de resonancia en vivo y $\varphi_i$ una fase aleatoria por partícula. El color recorre el
+matiz HSL de cian a blanco según $A(u_i)\,\ell$, de modo que \textbf{los vientres brillan y
+los nodos se apagan}: el alumno ve dónde está cada uno.
+
+\subsection{Elementos de la escena}
+
+\begin{itemize}[nosep]
+  \item \textbf{Tubo de vidrio}: cilindro con material físico (clearcoat, reflejos de un
+        entorno generado proceduralmente con \emph{Lightformers}, sin descargas de internet).
+  \item \textbf{Agua}: cuerpo cilíndrico + superficie con oleaje sutil + menisco; su altura
+        sigue el deslizador del predictor con interpolación suave ($12\,\%$ por cuadro).
+  \item \textbf{Diapasón metálico}: aparece y vibra sólo cuando el nivel de resonancia supera
+        $\sim\!45\,\%$; la separación de sus púas oscila a \SI{45}{\radian\per\second}.
+  \item \textbf{Resplandor}: luz puntual + halo aditivo cuya intensidad sigue el nivel de
+        resonancia (refuerzo visual del pico).
+  \item \textbf{Cámara orbital} con límites de distancia y elevación
+        (\texttt{OrbitControls}).
+\end{itemize}
+
+% =====================================================================
+\section{Tutorial interactivo}
+% =====================================================================
+
+Superpuesto al entrar en la aplicación (en cada recarga) y reabrible desde el botón de ayuda
+del encabezado. Once pasos con esquemas SVG vectoriales y fórmulas KaTeX:
+
+\begin{enumerate}[nosep]
+  \item \textbf{Bienvenida} --- qué hace la app (diapasón y ondas).
+  \item \textbf{La idea} --- onda estacionaria; vientre en la boca, nodo en el agua.
+  \item \textbf{El armónico} --- tres tubos con los patrones $n = 1, 3, 5$ ($n$ cuartos de onda).
+  \item \textbf{¿Qué armónico pongo?} --- el orden de los puntos sonoros al bajar el agua
+        determina $n$.
+  \item \textbf{¿Y si sólo suena en un punto?} --- caso del tubo corto: ejemplo numérico
+        \SI{440}{\hertz}, $n{=}3$ no cabe; método de punto único.
+  \item \textbf{Configura tus variables} --- $f$, $n$, $T$, $D$.
+  \item \textbf{Busca el pico} --- calibración y barra de amplitud.
+  \item \textbf{Fórmulas} --- las seis ecuaciones centrales renderizadas con KaTeX.
+  \item \textbf{Registra y obtén el resultado} --- historial y regresión.
+  \item \textbf{Consejos para medir bien} --- golpeo del diapasón, distancia a la boca,
+        separación $\lambda/2$, temperatura real, corrección de boca, silencio ambiente.
+  \item \textbf{Paso a paso} --- lista numerada de uso el día de la práctica.
+\end{enumerate}
+
+% =====================================================================
+\section{Arquitectura de software}
+% =====================================================================
+
+\subsection{Estructura de módulos}
+
+\begin{center}
+\begin{tabular}{@{}lp{9.2cm}@{}}
+\toprule
+Archivo & Responsabilidad \\
+\midrule
+\texttt{src/App.tsx} & Composición de paneles, estado global de la sesión, historial. \\
+\texttt{src/utils/physics.ts} & \textbf{Motor físico}: funciones puras (sin React, sin
+estado) para todas las ecuaciones de la sección 2; testeables de forma aislada. \\
+\texttt{src/hooks/useResonanceAnalyzer.ts} & \textbf{Motor DSP}: captura, FFT, calibración,
+máquina de estados, detección de pico (sección 3). \\
+\texttt{src/components/ResonanceVisualizer3D.tsx} & Escena 3D (sección 4). \\
+\texttt{src/components/SettingsPanel.tsx} & Entrada de $f$, $n$, $T$, $D$; inicio/parada. \\
+\texttt{src/components/StatusDisplay.tsx} & Amplitud en vivo, frecuencia detectada, estado. \\
+\texttt{src/components/ResonancePredictor.tsx} & Predicción de picos y curva de Lorentz. \\
+\texttt{src/components/CalculadorFisico.tsx} & Registro de un pico: longitud, elección de
+frecuencia nominal/medida, vista previa $v \pm \Delta v$. \\
+\texttt{src/components/RegressionPanel.tsx} & Regresión por modos: $v$, $\Delta v$, $R^2$,
+$e$ medida, veredicto de compatibilidad. \\
+\texttt{src/components/HistoryPanel.tsx} & Historial de mediciones. \\
+\texttt{src/components/TutorialOverlay.tsx} & Tutorial de 11 pasos (sección 5). \\
+\texttt{src/components/ErrorModal.tsx} & Errores de micrófono (permiso denegado, sin
+dispositivo). \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Principios de diseño}
+
+\begin{itemize}[nosep]
+  \item \textbf{Física pura separada de la interfaz}: \texttt{physics.ts} no importa React;
+        cada fórmula es una función determinista con entradas y salidas explícitas.
+  \item \textbf{El usuario decide, la app asiste}: la captura nunca se detiene sola; el
+        registro de la longitud es una acción consciente del estudiante.
+  \item \textbf{Sin red en tiempo de ejecución}: reflejos 3D generados proceduralmente,
+        fuentes y KaTeX empaquetados en el build.
+  \item \textbf{Incertidumbre siempre visible}: ningún resultado se muestra sin su $\pm$.
+\end{itemize}
+
+% =====================================================================
+\section{Tecnologías y bibliotecas}
+% =====================================================================
+
+\subsection{Dependencias de producción}
+
+\begin{center}
+\begin{tabular}{@{}llp{7.0cm}@{}}
+\toprule
+Biblioteca & Versión & Papel en la app \\
+\midrule
+\texttt{react} / \texttt{react-dom} & 19.2 & Interfaz declarativa y estado. \\
+\texttt{three} & 0.184 & Motor 3D WebGL (geometrías, materiales físicos, luces). \\
+\texttt{@react-three/fiber} & 9.6 & Renderizador de React para Three.js: la escena 3D se
+declara como componentes. \\
+\texttt{@react-three/drei} & 10.7 & Utilidades 3D: \texttt{OrbitControls},
+\texttt{Environment}, \texttt{Lightformer}, \texttt{ContactShadows}. \\
+\texttt{katex} & 0.17 & Renderizado tipográfico de las fórmulas del tutorial
+(\texttt{renderToString}, sin dependencia de red). \\
+\texttt{lucide-react} & 1.17 & Iconografía vectorial coherente (sin emojis). \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{APIs nativas del navegador (sin biblioteca)}
+
+\begin{center}
+\begin{tabular}{@{}lp{9.6cm}@{}}
+\toprule
+API & Uso \\
+\midrule
+Web Audio API & \texttt{AudioContext}, \texttt{AnalyserNode} (FFT),
+\texttt{MediaStreamSource}: toda la cadena DSP de la sección 3. \\
+\texttt{getUserMedia} & Acceso al micrófono con preprocesado desactivado. \\
+\texttt{requestAnimationFrame} & Bucle de análisis y animación a $\approx 60$ fps. \\
+Fullscreen API & Modo pantalla completa para proyectar en clase. \\
+SVG & Esquemas didácticos del tutorial y gráficas del predictor/regresión
+(generados como JSX, sin biblioteca de gráficas). \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Herramientas de desarrollo}
+
+\begin{center}
+\begin{tabular}{@{}llp{7.2cm}@{}}
+\toprule
+Herramienta & Versión & Papel \\
+\midrule
+\texttt{typescript} & 6.0 & Tipado estático estricto de todo el código. \\
+\texttt{vite} & 8.0 & Servidor de desarrollo con HMR y build de producción. \\
+\texttt{eslint} (+ plugins React) & 10 & Calidad de código y reglas de hooks. \\
+\texttt{@vitejs/plugin-basic-ssl} & 2.3 & HTTPS local: \texttt{getUserMedia} exige contexto
+seguro al probar desde otros dispositivos. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Nota}: los cálculos físicos \emph{no} usan ninguna biblioteca numérica externa.
+Mínimos cuadrados, propagación de incertidumbre, interpolación parabólica y la FFT (provista
+por el nodo nativo \texttt{AnalyserNode}) cubren todas las necesidades; esto mantiene el
+motor auditable línea a línea.
+
+% =====================================================================
+\section{Tabla de constantes}
+% =====================================================================
+
+\begin{center}
+\begin{tabular}{@{}llp{6.6cm}@{}}
+\toprule
+Constante & Valor & Significado \\
+\midrule
+$v_0$ & \SI{331.45}{\metre\per\second} & Velocidad del sonido en aire seco a \SI{0}{\celsius}. \\
+$e/D$ & $0.3$ & Coeficiente de corrección de extremo (Levine--Schwinger). \\
+$\Delta L$ & \SI{0.2}{\centi\metre} & Incertidumbre de lectura del nivel de agua ($1\sigma$). \\
+$\Delta f$ & \SI{1.0}{\hertz} & Tolerancia del diapasón / resolución espectral. \\
+\texttt{fftSize} & $16\,384$ & Tamaño de la FFT. \\
+Banda objetivo & $\pm\SI{15}{\hertz}$ & Ventana de búsqueda alrededor de $f$. \\
+Umbral de ruido base & $20/255$ & Mínimo absoluto del umbral adaptativo. \\
+Margen de calibración & $+15$ & Suma sobre el ruido promedio medido. \\
+Duración de calibración & \SI{3000}{\milli\second} & Medición del ruido ambiente. \\
+$\alpha$ (EMA) & $0.85$ & Suavizado exponencial de amplitud. \\
+Estabilidad & 10 cuadros & Cuadros sobre umbral para entrar a \texttt{measuring}. \\
+Tolerancia de caída & $5\,\%$ & Banda de histéresis bajo el máximo. \\
+Cuadros de caída & 25 & Persistencia para declarar el pico. \\
+Umbral de clipping & $250/255$ & Detección de saturación del micrófono. \\
+$w$ (Lorentz) & \SI{1.2}{\centi\metre} & Semianchura del modelo de pico del predictor. \\
+Aviso de desafinación & $>\SI{2}{\hertz}$ & Diferencia nominal/medida que dispara el aviso. \\
+Partículas 3D & 260 & Esferas instanciadas de la onda. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% =====================================================================
+\section{Limitaciones conocidas y extensiones posibles}
+% =====================================================================
+
+\begin{itemize}[nosep]
+  \item \textbf{Aire seco}: la ecuación~\eqref{eq:vteo} ignora la humedad. A
+        \SI{25}{\celsius} y $70\,\%$ HR el sonido viaja $\sim\SI{1}{\metre\per\second}$ más
+        rápido ($\sim 0.3\,\%$); un campo opcional de humedad relativa lo corregiría.
+  \item \textbf{Incertidumbre de $e$}: el método de punto único propaga $\Delta f$ y
+        $\Delta L$, pero no la incertidumbre del propio coeficiente $0.3D$
+        ($\pm 10$--$20\,\%$ según la literatura); el $\Delta v$ de punto único está
+        ligeramente subestimado. El método de regresión no sufre este problema (mide $e$).
+  \item \textbf{Validez de $e = 0.3D$}: requiere $\lambda \gg D$; con los diapasones de
+        laboratorio ($\lambda \gtrsim \SI{30}{\centi\metre}$, $D \sim \SI{3}{\centi\metre}$)
+        se cumple con holgura.
+  \item \textbf{Historial volátil}: las mediciones viven en memoria de la sesión; cerrar la
+        pestaña las descarta (una exportación CSV sería una extensión natural).
+\end{itemize}
+
+% =====================================================================
+\section*{Referencias}
+% =====================================================================
+\begin{itemize}[nosep]
+  \item H.~Levine y J.~Schwinger, \emph{On the radiation of sound from an unflanged circular
+        pipe}, Phys.\ Rev.\ \textbf{73}, 383--406 (1948). [Origen del coeficiente $0.6133\,r$.]
+  \item Lord Rayleigh, \emph{The Theory of Sound}, Vol.~2, Macmillan (1896). [Primeras
+        estimaciones de la corrección de extremo.]
+  \item J.~O.~Smith, \emph{Spectral Audio Signal Processing}. [Interpolación parabólica de
+        picos espectrales.]
+  \item MDN Web Docs: \emph{Web Audio API} --- \texttt{AnalyserNode},
+        \texttt{getUserMedia}. \url{https://developer.mozilla.org/}
+  \item Documentación de React Three Fiber: \url{https://docs.pmnd.rs/react-three-fiber}
+  \item Documentación de KaTeX: \url{https://katex.org/}
+\end{itemize}
+
+\end{document}

@@ -31,7 +31,6 @@ export function ResonanceVisualizer({ mode, resonanceLevel }: ResonanceVisualize
     const draw = () => {
       ctx.clearRect(0, 0, width, height);
 
-      // Background grid
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -46,7 +45,6 @@ export function ResonanceVisualizer({ mode, resonanceLevel }: ResonanceVisualize
       const maxAvailableAmplitude = (height / 2) * 0.8;
       const targetAmplitude = minAmplitude + (maxAvailableAmplitude - minAmplitude) * (resonanceLevel / 100);
 
-      // Main wave
       ctx.beginPath();
       ctx.strokeStyle = 'rgba(0, 229, 255, 0.8)';
       ctx.lineWidth = 3;
@@ -64,7 +62,6 @@ export function ResonanceVisualizer({ mode, resonanceLevel }: ResonanceVisualize
       }
       ctx.stroke();
 
-      // Ghost wave
       ctx.beginPath();
       ctx.strokeStyle = 'rgba(0, 255, 136, 0.4)';
       ctx.lineWidth = 2;
@@ -79,7 +76,6 @@ export function ResonanceVisualizer({ mode, resonanceLevel }: ResonanceVisualize
       }
       ctx.stroke();
 
-      // Bounds
       ctx.beginPath();
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
       ctx.setLineDash([5, 5]);
@@ -130,8 +126,7 @@ export function ResonanceVisualizer({ mode, resonanceLevel }: ResonanceVisualize
 
       <div className="canvas-wrapper">
         <canvas ref={canvasRef} className="canvas-element" />
-        
-        {/* Tubo visual borders */}
+
         <div style={{
           position: 'absolute', right: 0, top: 0, bottom: 0, width: '8px',
           background: 'rgba(255,255,255,0.2)', borderLeft: '1px solid rgba(255,255,255,0.5)', borderRadius: '0 4px 4px 0'

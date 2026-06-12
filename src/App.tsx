@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { TutorialOverlay } from './components/TutorialOverlay';
 import { SettingsPanel } from './components/SettingsPanel';
 import { StatusDisplay } from './components/StatusDisplay';
 import { ResonanceVisualizer3D } from './components/ResonanceVisualizer3D';
@@ -9,7 +10,7 @@ import { ErrorModal } from './components/ErrorModal';
 import { CalculadorFisico } from './components/CalculadorFisico';
 import { useResonanceAnalyzer } from './hooks/useResonanceAnalyzer';
 import type { HistoryRecord } from './hooks/useResonanceAnalyzer';
-import { Activity, Maximize, Minimize } from 'lucide-react';
+import { Activity, Maximize, Minimize, HelpCircle } from 'lucide-react';
 
 function App() {
   const [targetFrequency, setTargetFrequency] = useState<number>(440);
@@ -19,6 +20,9 @@ function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [simulatedWater, setSimulatedWater] = useState(0.5);
   const [showCalculator, setShowCalculator] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(true);
+
+  const closeTutorial = () => setShowTutorial(false);
 
   const [history, setHistory] = useState<HistoryRecord[]>([]);
 
@@ -40,7 +44,6 @@ function App() {
     mode
   });
 
-  // La captura nunca se detiene sola; el usuario decide cuándo anotar la longitud.
   const handleStopCapture = () => {
     stopCapture();
     setShowCalculator(false);
@@ -66,16 +69,18 @@ function App() {
 
   const handleSaveCalculation = (record: HistoryRecord) => {
     setHistory(prev => [record, ...prev]);
-    setShowCalculator(false); // Cierra el formulario; la captura sigue corriendo.
+    setShowCalculator(false);
   };
 
   const handleDismissCalculation = () => {
-    setShowCalculator(false); // Cierra sin guardar; la captura sigue corriendo.
+    setShowCalculator(false);
   };
 
   return (
     <div className="app-wrapper">
-      <ErrorModal 
+      {showTutorial && <TutorialOverlay onClose={closeTutorial} />}
+
+      <ErrorModal
         errorType={micError} 
         onDismiss={stopCapture} 
       />
@@ -102,7 +107,15 @@ function App() {
           Localiza el pico, calcula la velocidad del sonido y minimiza el error experimental
         </p>
         
-        <button 
+        <button
+          className="btn-help"
+          onClick={() => setShowTutorial(true)}
+          title="Ver tutorial"
+        >
+          <HelpCircle size={20} />
+        </button>
+
+        <button
           className="btn-fullscreen"
           onClick={toggleFullscreen}
           title="Pantalla Completa"
