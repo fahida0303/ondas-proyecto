@@ -1,0 +1,306 @@
+% =====================================================================
+%  Determinación de la velocidad del sonido mediante un tubo resonante
+%  Procedimiento completo y análisis físico del Asistente de Resonancia
+%  Compilar con: pdflatex Procedimiento_Resonancia.tex  (dos veces)
+% =====================================================================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[spanish,es-noshorthands]{babel}
+\decimalpoint
+\usepackage{amsmath,amssymb}
+\usepackage{siunitx}
+\sisetup{output-decimal-marker={.},separate-uncertainty=true}
+\usepackage{booktabs}
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=blue!60!black,urlcolor=blue!60!black}
+
+\newcommand{\vsound}{v_{\text{aire}}}
+\newcommand{\vexp}{v_{\text{exp}}}
+\newcommand{\vteo}{v_{\text{teo}}}
+
+\title{\textbf{Determinación de la velocidad del sonido con un tubo resonante}\\[2mm]
+\large Procedimiento experimental y fundamento físico del \emph{Asistente de Resonancia}}
+\author{Práctica de Laboratorio de Ondas}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent Se determina la velocidad de propagación del sonido en el aire a partir de las
+resonancias de una columna de aire de longitud variable, excitada por un diapasón de
+frecuencia conocida. El documento detalla el fundamento físico, el procedimiento paso a paso
+asistido por el programa, los dos métodos de cálculo (punto único y diferencia de modos por
+regresión lineal), la propagación de incertidumbres y un ejemplo numérico completo para un
+diapasón de \SI{1024}{\hertz}. Se discuten además todas las fuentes de error y por qué el
+procedimiento es metrológicamente robusto.
+\end{abstract}
+
+\section{Fundamento físico}
+
+\subsection{Ondas estacionarias en un tubo cerrado--abierto}
+El tubo resonante está \textbf{cerrado} en su extremo inferior por la superficie del agua y
+\textbf{abierto} en la boca superior, donde se coloca el diapasón. Estas condiciones de
+contorno imponen, para la onda de \emph{desplazamiento} de las partículas de aire:
+\begin{itemize}[nosep]
+  \item un \textbf{nodo} de desplazamiento en la superficie del agua (el aire no puede moverse contra el líquido);
+  \item un \textbf{vientre} de desplazamiento en la boca abierta (máxima libertad de movimiento).
+\end{itemize}
+La distancia entre un nodo y el vientre contiguo es un cuarto de longitud de onda, $\lambda/4$.
+Por ello sólo resuenan las longitudes de columna de aire que cumplen
+\begin{equation}
+  L_m \;=\; m\,\frac{\lambda}{4} \;-\; e, \qquad m = 1,\,3,\,5,\,7,\dots
+  \label{eq:resonancia}
+\end{equation}
+donde $m$ recorre únicamente los \textbf{armónicos impares} (modos 1, 3, 5\dots) y $e$ es la
+corrección de extremo (Sección~\ref{sec:correccion}). Dos resonancias consecutivas están
+separadas exactamente por
+\begin{equation}
+  \Delta L = L_{m+2}-L_m = \frac{\lambda}{2}.
+  \label{eq:separacion}
+\end{equation}
+
+\subsection{Corrección de extremo}\label{sec:correccion}
+El vientre de presión no se forma exactamente en el plano de la boca, sino una pequeña
+distancia por fuera. Para un tubo cilíndrico con un solo extremo abierto, esa corrección vale
+\begin{equation}
+  e \;\approx\; 0.6\,r \;=\; 0.3\,D,
+  \label{eq:endcorr}
+\end{equation}
+con $r$ el radio y $D$ el diámetro interno del tubo. La ecuación~\eqref{eq:endcorr} es
+\emph{aproximada}; más adelante se mide $e$ de forma empírica con el método de regresión.
+
+\subsection{Velocidad del sonido y temperatura}
+La velocidad del sonido en aire seco depende de la temperatura absoluta. A partir de la
+relación $\vsound=\sqrt{\gamma R T/M}$ se obtiene la forma práctica
+\begin{equation}
+  \vteo(T) \;=\; \SI{331.45}{\meter\per\second}\,\sqrt{1+\dfrac{T}{\SI{273.15}{\celsius}}},
+  \label{eq:vteo}
+\end{equation}
+con $T$ en grados Celsius. Esta expresión es la que el programa usa como valor de referencia
+(es exacta, a diferencia de la aproximación lineal $331.4+0.6\,T$).
+
+\subsection{Relación fundamental}
+Conocidos la frecuencia $f$ del diapasón y la longitud de onda $\lambda$ medida en la
+resonancia, la velocidad experimental es
+\begin{equation}
+  \boxed{\;\vexp = f\,\lambda\;}
+  \label{eq:fundamental}
+\end{equation}
+
+\section{Materiales}
+\begin{itemize}[nosep]
+  \item Tubo resonante vertical con depósito de agua de nivel ajustable.
+  \item Cinta métrica adosada al tubo (resolución \SI{1}{\milli\meter}).
+  \item Diapasón de frecuencia conocida (p.\,ej.\ \SI{440}{}, \SI{512}{} o \SI{1024}{\hertz}).
+  \item Termómetro ambiente.
+  \item Dispositivo con micrófono ejecutando el \emph{Asistente de Resonancia}.
+\end{itemize}
+
+\section{Procedimiento experimental paso a paso}
+
+\subsection{Configuración inicial (panel ``Variables del Laboratorio'')}
+\begin{enumerate}[nosep]
+  \item Introducir la \textbf{frecuencia} $f$ grabada en el diapasón.
+  \item Seleccionar el \textbf{armónico} a buscar (empezar por el Modo 1).
+  \item Medir e introducir la \textbf{temperatura} $T$ del aire.
+  \item Introducir el \textbf{diámetro} interno $D$ del tubo.
+\end{enumerate}
+El programa fija así la banda de análisis $f\pm\SI{15}{\hertz}$ y calcula $\vteo(T)$ y $e$.
+
+\subsection{Predicción (panel ``Predictor de Resonancia'')}
+Introducir el \textbf{largo del tubo}. El programa evalúa la
+ecuación~\eqref{eq:resonancia} para todos los modos impares que caben y marca las longitudes
+de columna de aire donde \emph{debe} oírse el máximo. Esto orienta la búsqueda antes de medir.
+
+\subsection{Calibración del ruido}
+Pulsar \emph{``Calibrar y Buscar Resonancia''} y guardar silencio \SI{3}{\second}. El sistema
+promedia el ruido de fondo y fija un umbral de detección $u=\max(20,\ \bar{r}+15)$ en la escala
+de amplitud (0--255), evitando falsos positivos por ruido ambiente.
+
+\subsection{Captura de una resonancia}
+\begin{enumerate}[nosep]
+  \item Golpear el diapasón y acercarlo a la boca del tubo. El estado evoluciona
+        \emph{Esperando $\to$ Estabilizando $\to$ Midiendo}; el filtro exige un tono
+        sostenido durante varios fotogramas.
+  \item Verificar que la \textbf{frecuencia detectada por la FFT} coincide con $f$
+        (indicador en verde), lo que confirma que se mide el diapasón y no un ruido.
+  \item Variar lentamente el nivel del agua. La \textbf{amplitud} y el \textbf{Nivel de
+        Resonancia} crecen al acercarse al punto resonante.
+  \item Sobrepasar ligeramente el máximo: cuando la amplitud cae de forma sostenida, el
+        programa anuncia el pico.
+  \item Leer en la cinta la \textbf{longitud de aire $L$} en el máximo e introducirla.
+\end{enumerate}
+
+\subsection{Repetición por modos}
+Repetir la captura cambiando el armónico a Modo 3 y Modo 5, anotando $L_1$, $L_3$ y $L_5$
+para el \emph{mismo} diapasón. Con dos modos basta para el método de regresión.
+
+\section{Métodos de cálculo}
+
+\subsection{Método directo (un punto)}
+A partir de una sola resonancia de modo $m$ y longitud medida $L$:
+\begin{align}
+  L_{\text{ef}} &= L + e, & e &= 0.3\,D, \label{eq:Lef}\\
+  \lambda &= \frac{4\,L_{\text{ef}}}{m}, &
+  \vexp &= f\,\lambda. \label{eq:vexp_directo}
+\end{align}
+Su limitación es que depende de la corrección de extremo \emph{supuesta}
+(ecuación~\eqref{eq:endcorr}).
+
+\subsection{Método de diferencia de modos (regresión lineal)}\label{sec:regresion}
+Es el método de mayor exactitud. Reescribiendo la ecuación~\eqref{eq:resonancia} como una recta
+en la variable $m$:
+\begin{equation}
+  L_m = \underbrace{\frac{\lambda}{4}}_{\text{pendiente } a}\,m \;\underbrace{-\,e}_{\text{ordenada } b},
+\end{equation}
+un ajuste por mínimos cuadrados de los pares $(m,\,L_m)$ da
+\begin{equation}
+  a = \frac{\sum (m_i-\bar m)(L_i-\bar L)}{\sum (m_i-\bar m)^2},
+  \qquad b = \bar L - a\,\bar m,
+\end{equation}
+y de ahí
+\begin{equation}
+  \boxed{\;\lambda = 4a,\qquad \vexp = 4 a f,\qquad e_{\text{medida}} = -\,b.\;}
+  \label{eq:reg}
+\end{equation}
+\textbf{Ventaja clave:} la corrección de extremo se \emph{cancela} en la pendiente, por lo que
+$\vexp$ no depende de ningún valor supuesto; además $e$ se \emph{mide} como
+$-b$. El caso de dos modos es la conocida relación
+\begin{equation}
+  L_3 - L_1 = \frac{\lambda}{2}\;\Rightarrow\; \vexp = 2 f (L_3-L_1).
+\end{equation}
+La calidad del ajuste se cuantifica con el coeficiente de determinación
+$R^2 = a^2\,S_{mm}/S_{LL}$, que debe ser muy próximo a 1.
+
+\section{Análisis de incertidumbre}
+
+\subsection{Método directo}
+Aplicando propagación de errores a la ecuación~\eqref{eq:vexp_directo}:
+\begin{equation}
+  \frac{\Delta\vexp}{\vexp} = \sqrt{\left(\frac{\Delta f}{f}\right)^2
+  + \left(\frac{\Delta L_{\text{ef}}}{L_{\text{ef}}}\right)^2},
+  \label{eq:prop}
+\end{equation}
+con $\Delta L_{\text{ef}}=\Delta L$ la incertidumbre de lectura (por defecto
+$\Delta L=\SI{0.2}{\centi\meter}$) y $\Delta f$ la tolerancia del diapasón
+(por defecto $\Delta f=\SI{1}{\hertz}$).
+
+\subsection{Método de regresión}
+La incertidumbre de la velocidad proviene del error estándar de la pendiente:
+\begin{equation}
+  s_a = \sqrt{\frac{1}{n-2}\,\frac{\sum (L_i - a m_i - b)^2}{\sum (m_i-\bar m)^2}},
+  \qquad \Delta\vexp = 4 f\, s_a .
+  \label{eq:prop_reg}
+\end{equation}
+El resultado se reporta como $\vexp \pm \Delta\vexp$ y se considera \emph{compatible} con la
+teoría si $|\vexp-\vteo|\le \Delta\vexp$.
+
+\section{Ejemplo numérico resuelto ($f=\SI{1024}{\hertz}$)}
+
+\paragraph{Datos.} $f=\SI{1024}{\hertz}$, $T=\SI{20}{\celsius}$, $D=\SI{3}{\centi\meter}$.
+\begin{align*}
+  \vteo &= 331.45\sqrt{1+20/273.15} = \SI{343.4}{\meter\per\second}, &
+  \lambda &= \vteo/f = \SI{33.53}{\centi\meter},\\
+  \lambda/4 &= \SI{8.38}{\centi\meter}, & e &= 0.3\cdot 3 = \SI{0.90}{\centi\meter}.
+\end{align*}
+
+\paragraph{Resonancias predichas (ec.~\eqref{eq:resonancia}).}
+\begin{center}
+\begin{tabular}{cccc}
+\toprule
+Modo $m$ & $m\lambda/4$ (cm) & $L_m = m\lambda/4 - e$ (cm) \\
+\midrule
+1 & 8.38  & 7.48 \\
+3 & 25.15 & 24.25 \\
+5 & 41.92 & 41.02 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Medidas de laboratorio (ejemplo).}
+$L_1=\SI{7.6}{\centi\meter}$, $L_3=\SI{24.3}{\centi\meter}$, $L_5=\SI{41.1}{\centi\meter}$.
+
+\subparagraph{(a) Método directo, modo 1.}
+\begin{align*}
+  L_{\text{ef}} &= 7.6+0.9 = \SI{8.5}{\centi\meter}, &
+  \lambda &= 4(0.085) = \SI{0.340}{\meter},\\
+  \vexp &= 1024\cdot 0.340 = \SI{348.2}{\meter\per\second}, &
+  \text{error} &= 1.4\,\%.
+\end{align*}
+Incertidumbre (ec.~\eqref{eq:prop}): $\Delta\vexp/\vexp=\sqrt{(1/1024)^2+(0.002/0.085)^2}=0.0236$,
+luego $\vexp = \SI{348(8)}{\meter\per\second}$ (contiene a $\vteo$).
+
+\subparagraph{(b) Diferencia de modos (1 y 3).}
+\[
+  \lambda = 2(L_3-L_1) = 2(0.243-0.076) = \SI{0.334}{\meter},\quad
+  \vexp = 1024\cdot 0.334 = \SI{342.0}{\meter\per\second}\ (0.4\,\%).
+\]
+
+\subparagraph{(c) Regresión con tres modos.}
+Con $m=\{1,3,5\}$ y $L=\{0.076,\,0.243,\,0.411\}\,\si{\meter}$:
+\[
+  a = \frac{0.670}{8} = \SI{0.08375}{\meter},\quad
+  \lambda = 4a = \SI{0.335}{\meter},\quad
+  \vexp = 4af = \SI{343.0}{\meter\per\second}.
+\]
+\[
+  e_{\text{medida}} = -b = \SI{0.79}{\centi\meter},\qquad R^2 = 0.9999,\qquad
+  \Delta\vexp = 4f s_a = \SI{0.3}{\meter\per\second}.
+\]
+\[
+  \boxed{\;\vexp = \SI{343.0(3)}{\meter\per\second}\quad\text{frente a}\quad
+  \vteo=\SI{343.4}{\meter\per\second}\;\;\Rightarrow\;\text{compatible}\ (0.1\,\%).\;}
+\]
+El método de regresión reduce el error de $1.4\,\%$ a $0.1\,\%$ y mide la corrección de
+extremo ($\SI{0.79}{\centi\meter}$) sin suponerla.
+
+\section{Fuentes de error y robustez del procedimiento}
+Para que el resultado sea irreprochable, se acotan explícitamente todos los efectos:
+\begin{itemize}[nosep]
+  \item \textbf{Corrección de extremo:} eliminada en el método de regresión (no se supone, se mide).
+  \item \textbf{Lectura de la longitud:} dominante; se propaga como $\Delta L=\SI{0.2}{\centi\meter}$.
+        Su efecto se minimiza usando varios modos (mayor brazo en $m$).
+  \item \textbf{Calibración del diapasón:} el diapasón es un \emph{patrón} calibrado; se usa su
+        frecuencia nominal y la FFT la \emph{verifica} en vivo (banda $f\pm\SI{15}{\hertz}$).
+  \item \textbf{Temperatura:} $\vteo$ varía $\approx\SI{0.6}{\meter\per\second}$ por
+        \si{\celsius}; con $\Delta T=\SI{0.5}{\celsius}$ aporta $\Delta\vteo\approx\SI{0.3}{\meter\per\second}$.
+  \item \textbf{Humedad relativa:} efecto de segundo orden ($\lesssim 0.4\,\%$ entre aire seco y
+        saturado a \SI{20}{\celsius}); despreciable frente a la incertidumbre de lectura. Se
+        asume aire seco (ec.~\eqref{eq:vteo}).
+  \item \textbf{Pérdidas viscosas/térmicas en la pared:} afectan al factor de calidad (anchura
+        del pico), no a la \emph{posición} de la resonancia, por lo que no sesgan $\vexp$.
+  \item \textbf{Ruido ambiente y transitorios:} suprimidos por la calibración, el filtro de
+        estabilidad y el suavizado exponencial de la señal.
+\end{itemize}
+
+\section{Conclusión}
+El procedimiento determina $\vsound$ con dos métodos independientes y consistentes. El método de
+diferencia de modos por regresión lineal proporciona el valor de referencia, pues elimina la
+corrección de extremo, mide $e$ empíricamente y reporta una incertidumbre estadística rigurosa.
+En el ejemplo, $\vexp=\SI{343.0(3)}{\meter\per\second}$ coincide con el valor teórico
+$\vteo=\SI{343.4}{\meter\per\second}$ dentro de la incertidumbre, validando el experimento.
+
+\appendix
+\section{Correspondencia programa $\leftrightarrow$ ecuaciones}
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Elemento del programa & Ecuación / función \\
+\midrule
+``v teórica'' & \eqref{eq:vteo} \quad\texttt{theoreticalSpeedOfSound} \\
+``Pico Encontrado'' $\to$ $\vexp\pm\Delta v$ & \eqref{eq:vexp_directo}, \eqref{eq:prop} \quad\texttt{singlePointResult} \\
+``Predictor de Resonancia'' & \eqref{eq:resonancia} \quad\texttt{predictedResonances} \\
+``Velocidad por Regresión'' & \eqref{eq:reg}, \eqref{eq:prop_reg} \quad\texttt{regressionResult} \\
+``Frecuencia detectada (FFT)'' & interpolación parabólica del pico \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\end{document}
